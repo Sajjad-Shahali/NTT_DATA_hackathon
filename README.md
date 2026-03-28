@@ -1,5 +1,7 @@
 # NTT DATA Hackathon 2026 — Tire-Road Friction Identification
 
+![Dashboard Demo](reports/demo-intro.png)
+
 **Event:** NTT DATA BEST Hackathon 2026
 **Date:** 28 March 2026 | Politecnico di Torino, Turin, Italy
 **Challenge:** Applying Innovative AI Technologies (ML/AI/GenAI/Agentic AI) to R&D Engineering and Product Development Processes
