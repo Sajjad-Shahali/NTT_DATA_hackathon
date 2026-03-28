@@ -514,7 +514,14 @@ c1·c2 > c3
 
 ## Live Web Dashboard
 
-A browser-based demo replays `data/raw/friction_data_full.csv` through the sliding-window classifier and visualises the result in real time — Three.js top-down car, split-road surface coloring, left/right data panels with per-wheel Burckhardt parameter estimates.
+A browser-based demo replays `data/raw/friction_data_full.csv` through the sliding-window Burckhardt NLS classifier, visualising per-wheel surface identification in real time.
+
+**Features:**
+- Three.js top-down car scene with split road (left/right surface coloring) and animated wheels
+- Left / right data panels: surface badge, μ_peak bar, c₁/c₂/c₃ parameters, slip sparkline, Burckhardt μ(s) curve
+- Live stats strip: classifications count, avg μ per side, surface change count
+- Interactive noise robustness slider: drag σ_μ 0→0.10, see real F1 + Balanced Accuracy from actual model runs
+- Professional intro page with 3-layer algorithm explanation, real Burckhardt curves with data scatter, actual prediction table
 
 ### Prerequisites
 
@@ -537,16 +544,28 @@ python app.py
 #    http://localhost:5000
 ```
 
-The intro screen loads first. Click **▶ Start Live Demo** to begin streaming.
+The intro screen loads first. Scroll to explore the algorithm, real predictions, and noise robustness. Click **▶ Start Live Demo** to open the dashboard.
 
-### Controls
+### Dashboard Controls
 
 | Control | Description |
 |---------|-------------|
 | ▶ / ⏸ | Play / Pause the replay |
-| ⟳ Restart | Reset to row 0, clear both buffers |
-| Speed ×0.5 → ×5 | Adjust replay speed |
-| Scenario selector | Filter by scenario column (split-μ, uniform dry, etc.) |
+| ⟳ Restart | Reset to row 0, clear both side buffers |
+| Speed ×0.5 → ×5 | Adjust replay cadence |
+| Scenario selector | Filter CSV by `scenario` column |
+| Noise slider | Add σ_μ to incoming data, watch F1 / BAC update live |
+
+### Classification Metrics
+
+The classifier is evaluated with **F1 macro** and **Balanced Accuracy (BAC)**. With equal batch counts per surface these are equivalent and neither inflates scores due to class imbalance. Real results from `data/raw/prepared_friction.csv`:
+
+| σ_μ added | F1 macro | Bal. Accuracy | Condition |
+|-----------|----------|---------------|-----------|
+| 0.000 | **1.000** | **1.000** | Ideal (baseline) |
+| 0.010 | 0.724 | 0.733 | Realistic vehicle |
+| 0.050 | 0.528 | 0.533 | Degraded sensor |
+| 0.100 | 0.436 | 0.433 | Extreme noise |
 
 See [reports/project_handoff.md §16](reports/project_handoff.md) for full architecture details.
 
@@ -554,12 +573,12 @@ See [reports/project_handoff.md §16](reports/project_handoff.md) for full archi
 
 ## Team
 
-| | Name | Role | Programme |
-|---|---|---|---|
-| ![](reports/sajjad-shahali.jpg) | **Sajjad Shahali** | Machine Learning Engineer | MSc — Politecnico di Torino |
-| ![](reports/sajjad-shahali.jpg) | **Omer Ozkan** | Data Science & Engineer | MSc — Politecnico di Torino |
-| ![](reports/sajjad-shahali.jpg) | **Kaan Sadik Aslan** | Mechatronic Engineering | MSc — Politecnico di Torino |
-| ![](reports/sajjad-shahali.jpg) | **Berk Ali Demir** | Mechatronic Engineer | MSc — Politecnico di Torino |
+| Name | Role | Programme |
+|------|------|-----------|
+| **Sajjad Shahali** | Machine Learning Engineer | MSc — [Politecnico di Torino](https://www.polito.it/) |
+| **Omer Ozkan** | Data Science & Engineer | MSc — [Politecnico di Torino](https://www.polito.it/) |
+| **Kaan Sadik Aslan** | Mechatronic Engineering | MSc — [Politecnico di Torino](https://www.polito.it/) |
+| **Berk Ali Demir** | Mechatronic Engineer | MSc — [Politecnico di Torino](https://www.polito.it/) |
 
 ---
 
