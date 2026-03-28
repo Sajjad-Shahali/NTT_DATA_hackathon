@@ -1,5 +1,5 @@
 """
-predict_mu.py — Predict μ (friction coefficient) as a function of slip.
+predict_mu.py — Predict mu (friction coefficient) as a function of slip.
 
 Three approaches compared:
   1. Burckhardt Nonlinear Least Squares  (physics-based, interpretable)
@@ -70,7 +70,7 @@ class BurckhardtFitter:
     """
 
     # Parameter bounds: [c1_min, c2_min, c3_min] to [c1_max, c2_max, c3_max]
-    # Tightened to physically realistic surface range (ice → dry asphalt)
+    # Tightened to physically realistic surface range (ice -> dry asphalt)
     BOUNDS = ([0.01,  23.0, 0.001],
               [1.50, 310.0, 0.600])
 
@@ -301,7 +301,7 @@ def train_and_evaluate(df_surface: pd.DataFrame, surface_name: str,
 def plot_results(all_results: list, save_dir: str = None):
     """
     4-panel figure: one subplot per surface.
-    Each panel shows: data, ground truth, Burckhardt fit, GP (±2σ), NN.
+    Each panel shows: data, ground truth, Burckhardt fit, GP (+/-2sigma), NN.
     """
     n_surfaces = len(all_results)
     fig = plt.figure(figsize=(7 * n_surfaces, 6))
@@ -348,7 +348,7 @@ def plot_results(all_results: list, save_dir: str = None):
                         fontsize=7, color="black",
                         arrowprops=dict(arrowstyle="->", color="black", lw=0.8))
 
-        # Gaussian Process ±2σ band
+        # Gaussian Process +/-2sigma band
         gp = res["gp"]
         try:
             mu_gp, sigma_gp = gp.predict(s_dense)
@@ -359,7 +359,7 @@ def plot_results(all_results: list, save_dir: str = None):
                             mu_gp - 2 * sigma_gp,
                             mu_gp + 2 * sigma_gp,
                             color="#E67E22", alpha=0.12,
-                            label="GP ±2σ")
+                            label="GP +/-2sigma")
         except Exception:
             pass
 
@@ -376,14 +376,14 @@ def plot_results(all_results: list, save_dir: str = None):
         ax.set_title(res["surface"], fontsize=12, fontweight="bold",
                      color=color)
         ax.set_xlabel("Slip ratio  s", fontsize=10)
-        ax.set_ylabel("Friction coefficient  μ", fontsize=10)
+        ax.set_ylabel("Friction coefficient  mu", fontsize=10)
         ax.set_xlim(0, 0.52)
         ax.set_ylim(bottom=-0.01)
         ax.legend(fontsize=7, loc="upper right")
         ax.grid(True, alpha=0.25, lw=0.5)
 
     fig.suptitle(
-        "μ(s) Prediction — Burckhardt NLS  vs  Gaussian Process  vs  Neural Network",
+        "mu(s) Prediction — Burckhardt NLS  vs  Gaussian Process  vs  Neural Network",
         fontsize=13, fontweight="bold", y=1.02
     )
 
@@ -391,7 +391,7 @@ def plot_results(all_results: list, save_dir: str = None):
         Path(save_dir).mkdir(parents=True, exist_ok=True)
         out = Path(save_dir) / "mu_prediction.png"
         plt.savefig(out, dpi=150, bbox_inches="tight")
-        print(f"\nPlot saved → {out}")
+        print(f"\nPlot saved -> {out}")
 
     plt.tight_layout()
     plt.show()
@@ -438,7 +438,7 @@ def plot_model_comparison_summary(all_results: list, save_dir: str = None):
     if save_dir:
         out = Path(save_dir) / "rmse_comparison.png"
         plt.savefig(out, dpi=150, bbox_inches="tight")
-        print(f"Plot saved → {out}")
+        print(f"Plot saved -> {out}")
 
     plt.tight_layout()
     plt.show()
@@ -450,31 +450,29 @@ def plot_model_comparison_summary(all_results: list, save_dir: str = None):
 
 def print_data_requirements():
     print("""
-╔══════════════════════════════════════════════════════════════════╗
-║           DATA REQUIREMENTS TO PREDICT μ(s)                     ║
-╠══════════════════════════════════════════════════════════════════╣
-║  MINIMUM (curve fitting, 3 params):                              ║
-║    • 10–20 (slip, μ) pairs per road surface                     ║
-║    • Slip range must cover [0.01, 0.45]                          ║
-║    • Noise < 5% of peak μ                                        ║
-║                                                                  ║
-║  RECOMMENDED (robust identification):                            ║
-║    • 200+ samples per surface                                    ║
-║    • Multiple temperatures, loads, tire compounds                ║
-║                                                                  ║
-║  SIGNALS NEEDED per timestep:                                    ║
-║    slip s    = (v_wheel − v_vehicle) / v_vehicle                 ║
-║    μ        = F_x / F_z   (longitudinal force / normal load)    ║
-║    F_x from : torque model  T_engine − I_wheel·α / R_wheel      ║
-║    F_z from : static weight + accelerometer load transfer        ║
-║    v_vehicle: GPS / optical / non-driven wheel average           ║
-║    v_wheel  : ABS wheel speed sensor                             ║
-║                                                                  ║
-║  FOR REAL-TIME ESC IDENTIFIER (hackaton_id.py):                  ║
-║    + g_esc  : ESC gradient from LPF demodulator                  ║
-║    + a_esc  : ESC dither amplitude (design param)                ║
-║    + s_probe: ESC-perturbed slip setpoint                        ║
-╚══════════════════════════════════════════════════════════════════╝
+DATA REQUIREMENTS TO PREDICT mu(s)
+-----------------------------------
+MINIMUM (curve fitting, 3 params):
+  - 10-20 (slip, mu) pairs per road surface
+  - Slip range must cover [0.01, 0.45]
+  - Noise < 5%% of peak mu
+
+RECOMMENDED (robust identification):
+  - 200+ samples per surface
+  - Multiple temperatures, loads, tire compounds
+
+SIGNALS NEEDED per timestep:
+  slip s    = (v_wheel - v_vehicle) / v_vehicle
+  mu        = F_x / F_z   (longitudinal force / normal load)
+  F_x from  : torque model  T_engine - I_wheel*alpha / R_wheel
+  F_z from  : static weight + accelerometer load transfer
+  v_vehicle : GPS / optical / non-driven wheel average
+  v_wheel   : ABS wheel speed sensor
+
+FOR REAL-TIME ESC IDENTIFIER (hackaton_id.py):
+  + g_esc   : ESC gradient from LPF demodulator
+  + a_esc   : ESC dither amplitude (design param)
+  + s_probe : ESC-perturbed slip setpoint
 """)
 
 
@@ -484,7 +482,7 @@ def print_data_requirements():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Predict μ(s) — tire-road friction curve identification"
+        description="Predict mu(s) — tire-road friction curve identification"
     )
     parser.add_argument("--data",    type=str,  default=None,
                         help="Path to CSV with columns: slip, mu_noisy, surface")
