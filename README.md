@@ -512,6 +512,57 @@ c1·c2 > c3
 
 ---
 
+## Live Web Dashboard
+
+A browser-based demo replays `data/raw/friction_data_full.csv` through the sliding-window classifier and visualises the result in real time — Three.js top-down car, split-road surface coloring, left/right data panels with per-wheel Burckhardt parameter estimates.
+
+### Prerequisites
+
+- `data/raw/friction_data_full.csv` must exist (export from MATLAB — see Real Data Pipeline above)
+- Virtual environment activated
+
+### Run
+
+```bash
+# 1. Activate environment
+source .env/Scripts/activate
+
+# 2. Install Flask (only needed once)
+pip install flask
+
+# 3. Start the server
+python app.py
+
+# 4. Open in browser
+#    http://localhost:5000
+```
+
+The intro screen loads first. Click **▶ Start Live Demo** to begin streaming.
+
+### Controls
+
+| Control | Description |
+|---------|-------------|
+| ▶ / ⏸ | Play / Pause the replay |
+| ⟳ Restart | Reset to row 0, clear both buffers |
+| Speed ×0.5 → ×5 | Adjust replay speed |
+| Scenario selector | Filter by scenario column (split-μ, uniform dry, etc.) |
+
+See [reports/project_handoff.md §16](reports/project_handoff.md) for full architecture details.
+
+---
+
+## Team
+
+| | Name | Role | Programme |
+|---|---|---|---|
+| ![](reports/sajjad-shahali.jpg) | **Sajjad Shahali** | Machine Learning Engineer | MSc — Politecnico di Torino |
+| ![](reports/sajjad-shahali.jpg) | **Omer Ozkan** | Data Science & Engineer | MSc — Politecnico di Torino |
+| ![](reports/sajjad-shahali.jpg) | **Kaan Sadik Aslan** | Mechatronic Engineering | MSc — Politecnico di Torino |
+| ![](reports/sajjad-shahali.jpg) | **Berk Ali Demir** | Mechatronic Engineer | MSc — Politecnico di Torino |
+
+---
+
 ## License
 
 This project was developed for the NTT DATA BEST Hackathon 2026 at Politecnico di Torino.
