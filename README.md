@@ -135,7 +135,10 @@ NTT_DATA_hackathon/
 ├── data/
 │   ├── raw/                 # Place real measurement CSVs here (slip, mu_noisy, surface)
 │   └── synthetic/           # Auto-generated Burckhardt curves (CSV)
+├── make_plots.py            # Smoke test + generate all 5 presentation plots
 ├── models/                  # Save fitted models here
+├── reports/
+│   └── plots/               # Auto-generated presentation plots (make_plots.py)
 ├── deliverables/            # Hackathon submission content (use cases, proposal)
 │   ├── UC_001_friction_identification.md   # MAKE: Real-time friction identifier
 │   ├── UC_002_requirements_traceability.md # MAKE: GenAI ISO 26262 traceability
@@ -240,6 +243,57 @@ result = ESC_TwoPoint_ID(mu_measured, s_measured, s_probe,
 ```
 
 > **Note:** The function wrapper uses a module-level shared instance. For multi-wheel simulations always use `ESCTwoPointID()` directly.
+
+---
+
+## Real Data Pipeline
+
+```bash
+# 1. Export from MATLAB (run in MATLAB)
+run('run_validation_updated.m')   # 48 simulations
+run('export_for_python.m')        # → friction_data_full.csv
+
+# 2. Copy CSV to project
+cp friction_data_full.csv data/raw/
+
+# 3. Preprocess
+python preprocess.py              # → data/raw/prepared_friction.csv  (20,616 rows)
+
+# 4. Train models on real data
+python predict_mu.py --data data/raw/prepared_friction.csv --n-train 500 --save reports/plots/
+
+# 5. Visualise real data
+python plot_data_exploration.py   # plots 06–10
+python plot_burckhardt_vs_real.py # plots 11–12
+
+# 6. Evaluate surface identification (unlabeled)
+python evaluate_unlabeled.py      # plot 13 — single-batch demo + 45-batch accuracy
+python eval_classification.py     # plot 14 — F1 / Precision / Recall per class
+```
+
+### Preprocessing summary (`preprocess.py`)
+
+Raw `friction_data_full.csv` (765k rows) → `prepared_friction.csv` (20,616 rows):
+
+| Step | Filter | Rows remaining |
+|---|---|---|
+| Start | Raw | ~765,000 |
+| Drop 12 columns | s_hat, road_1/2, dither, T_front/rear, … | same |
+| ABS filter | `abs_active == 1` | ~479,000 |
+| Confidence filter | `alpha > 0.01` | ~340,000 |
+| Stride=10 | Thin autocorrelated time-series per run×wheel | ~48,000 |
+| Balance | Snow cap=12,000 / Dry,Wet cap=6,000 each | **20,616** |
+
+### Classification results (unlabeled evaluation)
+
+| Surface | Precision | Recall | F1 | Batches |
+|---|---|---|---|---|
+| Dry asphalt | 1.0000 | 1.0000 | 1.0000 | 17 |
+| Wet asphalt | 1.0000 | 1.0000 | 1.0000 | 17 |
+| Snow | 1.0000 | 1.0000 | 1.0000 | 48 |
+| **Macro avg** | **1.0000** | **1.0000** | **1.0000** | 82 |
+
+Classifier: Burckhardt NLS fit → nearest-neighbour in normalised (c1, c2, c3) space.
 
 ---
 
@@ -368,6 +422,52 @@ The `deliverables/` folder contains the complete hackathon submission content:
 | [executive_proposal.md](deliverables/executive_proposal.md) | Proposal | Full executive proposal: Parts 1–5, implementation roadmap, aggregate ROI |
 
 **Aggregate impact:** −85% calibration effort | −70% audit prep | −60% code review | −80% test campaign cost | ~6–10× combined ROI
+
+### Presentation Plots
+
+Run `python make_plots.py` to regenerate all plots to `reports/plots/`:
+
+| File | Content | Slide use |
+|---|---|---|
+| `01_surfaces_overview.png` | All 4 Burckhardt curves with μ_peak & s_opt annotated | "The Problem" |
+| `02_model_comparison.png` | 2×2 grid: GT vs NLS vs GP vs NN per surface | Model validation |
+| `03_rmse_comparison.png` | Grouped bar chart: RMSE by method and surface | Accuracy summary |
+| `04_data_efficiency.png` | RMSE vs training-set size (dry & ice) | Data efficiency argument |
+| `05_identifier_convergence.png` | ESC identifier converging from wrong surface to ground truth | "Our solution" |
+
+### Data Exploration Plots
+
+Run `python plot_data_exploration.py` — requires `data/raw/friction_data_full.csv`:
+
+| File | Content |
+|---|---|
+| `06_data_slip_distribution.png` | Slip histograms raw vs preprocessed per surface |
+| `07_data_mu_vs_slip.png` | Scatter mu vs slip + Burckhardt ground-truth overlay |
+| `08_data_alpha_distribution.png` | Identifier confidence (alpha) by ABS state + time-series |
+| `09_data_scenario_coverage.png` | Sample counts per scenario before/after preprocessing |
+| `10_data_real_vs_model.png` | Real simulation data vs Burckhardt ground truth per surface |
+
+### c_matrix vs Real Data
+
+Run `python plot_burckhardt_vs_real.py`:
+
+| File | Content |
+|---|---|
+| `11_burckhardt_vs_real.png` | Per-surface: measured scatter + Burckhardt model curve |
+| `12_burckhardt_vs_real_combined.png` | All 3 surfaces on one axes for side-by-side comparison |
+
+### Unlabeled Evaluation & Classification Metrics
+
+```bash
+# Identify surface type from raw (slip, mu) — no label given
+python evaluate_unlabeled.py              # 100% accuracy, 45 batches
+python eval_classification.py             # F1 / Precision / Recall report
+```
+
+| File | Content |
+|---|---|
+| `13_unlabeled_evaluation.png` | Fitted curves, c1/c2 scatter, confusion matrix, RMSE dist. |
+| `14_classification_metrics.png` | Per-class Precision / Recall / F1 bar chart + confusion matrix |
 
 ---
 
