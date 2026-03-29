@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tire-Road Friction Identification</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e1118;--panel:#1a2030;--card:#141920;
+  --border:#ffffff12;--border2:#ffffff1e;
+  --text:#f0f4f8;--muted:#8899aa;--subtle:#4a5568;
+  --green:#34d399;--green2:#6ee7b7;
+  --blue:#60a5fa;--blue2:#93c5fd;
+  --snow:#c8d4e0;--snow2:#e2ecf4;
+  --purple:#818cf8;--purple2:#a5b4fc;
+  --amber:#fbbf24;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;}
+#bg-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.45;}
+
+/* ── NAV ── */
+.nav{position:sticky;top:0;z-index:100;background:#0e1118ee;backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:11px 40px;display:flex;align-items:center;justify-content:space-between;}
+.nav-brand{display:flex;align-items:center;gap:10px;}
+.nav-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.nav-title{font-size:13px;font-weight:600;}
+.nav-badge{background:var(--panel);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:10px;color:var(--muted);letter-spacing:1px;}
+.nav-cta{background:var(--purple);color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 0 20px #818cf840;transition:transform .15s,box-shadow .15s;}
+.nav-cta:hover{transform:translateY(-1px);box-shadow:0 0 28px #818cf860;}
+
+.container{max-width:1080px;margin:0 auto;padding:0 36px;position:relative;z-index:1;}
+
+/* ── HERO ── */
+.hero{padding:80px 0 52px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:20px;}
+.event-tag{display:inline-flex;align-items:center;gap:8px;background:#818cf810;border:1px solid #818cf830;border-radius:20px;padding:5px 15px;font-size:11px;color:var(--purple2);letter-spacing:1.5px;text-transform:uppercase;font-weight:500;}
+.tag-dot{width:5px;height:5px;border-radius:50%;background:var(--purple2);}
+h1{font-size:clamp(28px,5vw,54px);font-weight:800;line-height:1.08;letter-spacing:-2px;max-width:700px;}
+.grad{background:linear-gradient(135deg,var(--text) 0%,var(--muted) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hi{background:linear-gradient(135deg,var(--purple),var(--blue),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hero-sub{font-size:15px;color:var(--muted);line-height:1.75;max-width:540px;}
+
+/* ── TEAM IN HERO ── */
+.team-strip{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:4px;}
+.team-member{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--border);border-radius:40px;padding:6px 14px 6px 6px;transition:border-color .2s,transform .18s,box-shadow .18s;cursor:default;}
+.team-member:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 6px 20px #00000040;}
+.team-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;border:1.5px solid var(--border2);flex-shrink:0;display:block;}
+.team-avatar-ph{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--border2);background:var(--card);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--purple2);flex-shrink:0;}
+.team-info{}
+.team-name{font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;}
+.team-role{font-size:9px;color:var(--muted);white-space:nowrap;}
+
+/* ── CTA ── */
+.cta-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:4px;}
+.cta-btn{display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,#6366f1,var(--purple));color:#fff;border:none;border-radius:10px;padding:14px 34px;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 0 30px #818cf830,0 4px 20px #00000050;letter-spacing:.3px;transition:transform .15s,box-shadow .18s;}
+.cta-btn:hover{transform:translateY(-2px);box-shadow:0 0 44px #818cf850,0 8px 28px #00000060;}
+.cta-sub{font-size:11px;color:var(--subtle);}
+
+.divider{border:none;border-top:1px solid var(--border);margin:0;}
+
+/* ── SECTION ── */
+.section{padding:56px 0;}
+.section-label{font-size:9px;color:var(--purple2);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin-bottom:8px;}
+.section-title{font-size:clamp(18px,3vw,26px);font-weight:700;letter-spacing:-.4px;margin-bottom:6px;}
+.section-sub{font-size:14px;color:var(--muted);line-height:1.7;max-width:640px;margin-bottom:28px;}
+
+/* ── DATA OVERVIEW ── */
+.data-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.data-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px 16px;transition:border-color .2s,transform .18s,box-shadow .18s;}
+.data-card:hover{border-color:var(--border2);transform:translateY(-3px);box-shadow:0 8px 24px #00000040;}
+.data-val{font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1;}
+.data-key{font-size:10px;color:var(--subtle);margin-top:6px;letter-spacing:1px;text-transform:uppercase;}
+.data-detail{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5;}
+
+.data-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.detail-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;transition:border-color .2s,transform .18s;}
+.detail-card:hover{border-color:var(--border2);transform:translateY(-2px);}
+.detail-title{font-size:11px;font-weight:600;margin-bottom:8px;color:var(--text);}
+.detail-body{font-size:11px;color:var(--muted);line-height:1.7;}
+.detail-body b{color:var(--text);}
+.detail-body code{font-family:'JetBrains Mono',monospace;font-size:10px;background:#ffffff08;padding:1px 5px;border-radius:3px;color:var(--snow);}
+
+/* ── ALGORITHM FLOW ── */
+.flow{display:grid;grid-template-columns:1fr 24px 1fr 24px 1fr;align-items:center;}
+.flow-arrow{text-align:center;color:var(--subtle);font-size:16px;}
+.flow-card{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:18px;position:relative;overflow:hidden;transition:transform .18s,box-shadow .18s,border-color .2s;}
+.flow-card:hover{transform:translateY(-3px);box-shadow:0 8px 28px #00000050;}
+.flow-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.flow-card.l1::before{background:linear-gradient(90deg,var(--amber),transparent);}
+.flow-card.l2::before{background:linear-gradient(90deg,var(--purple),transparent);}
+.flow-card.l3::before{background:linear-gradient(90deg,var(--green),transparent);}
+.flow-num{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--subtle);margin-bottom:8px;}
+.flow-name{font-size:13px;font-weight:700;margin-bottom:6px;}
+.flow-desc{font-size:11px;color:var(--muted);line-height:1.6;}
+.flow-badge{display:inline-block;background:#ffffff08;border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--snow);margin-top:8px;}
+
+.eq-box{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:20px 24px;margin-top:20px;display:flex;align-items:center;gap:28px;transition:border-color .2s;}
+.eq-box:hover{border-color:#ffffff28;}
+.eq-formula{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--text);}
+.eq-legend{font-size:11px;color:var(--muted);line-height:1.9;}
+
+/* ── CURVES ── */
+.curves-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.curve-card{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:16px;transition:transform .18s,box-shadow .18s,border-color .2s;}
+.curve-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px #00000044;border-color:#ffffff22;}
+.curve-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.curve-name{font-size:12px;font-weight:600;}
+.curve-name.dry{color:var(--green2);}
+.curve-name.wet{color:var(--blue2);}
+.curve-name.snow{color:var(--snow2);}
+.curve-badge{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--subtle);}
+.curve-params{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:10px;}
+.cp{background:#ffffff06;border-radius:5px;padding:5px;text-align:center;transition:background .15s;}
+.cp:hover{background:#ffffff0f;}
+.cpk{font-size:8px;color:var(--subtle);font-family:'JetBrains Mono',monospace;}
+.cpv{font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--snow);}
+
+/* ── PREDICTIONS TABLE ── */
+.pred-table{width:100%;border-collapse:collapse;font-size:12px;}
+.pred-table th{background:var(--panel);color:var(--muted);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:10px 14px;border-bottom:1px solid var(--border2);text-align:left;font-weight:500;}
+.pred-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);transition:background .15s;}
+.pred-table tr:last-child td{border-bottom:none;}
+.pred-table tbody tr:hover td{background:#ffffff04;}
+.bs{display:inline-flex;align-items:center;gap:5px;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:600;border:1px solid;}
+.bs.dry{background:#052e1618;border-color:#22543d60;color:var(--green2);}
+.bs.wet{background:#1e3a5f18;border-color:#1d4ed860;color:var(--blue2);}
+.bs.snow{background:#1e293b;border-color:#47556960;color:var(--snow2);}
+.correct{color:var(--green2);font-weight:600;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;}
+
+/* ── NOISE SLIDER ── */
+.slider-card{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:28px 28px 24px;}
+.slider-row{display:flex;align-items:center;gap:16px;margin:16px 0;}
+.slider-wrap{flex:1;}
+input[type=range]{width:100%;-webkit-appearance:none;height:5px;border-radius:3px;outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--purple);border:3px solid var(--bg);box-shadow:0 0 10px #818cf855;cursor:pointer;}
+.slider-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--subtle);font-family:'JetBrains Mono',monospace;margin-top:4px;}
+.sigma-box{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:10px 16px;text-align:center;min-width:100px;}
+.sigma-val{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--purple);}
+.sigma-key{font-size:9px;color:var(--subtle);margin-top:2px;letter-spacing:1px;}
+.metrics-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.mcard{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;transition:border-color .3s;}
+.mcard.good{border-color:#34d39930;}
+.mcard.warn{border-color:#fbbf2430;}
+.mcard.bad{border-color:#f8717130;}
+.mval{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;transition:color .3s;}
+.mkey{font-size:9px;color:var(--subtle);margin-top:3px;letter-spacing:1px;text-transform:uppercase;}
+.explain-row{display:flex;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;}
+.ex-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
+.ex-text{font-size:12px;color:var(--muted);line-height:1.7;}
+.ex-text b{color:var(--text);}
+.noise-viz{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:14px 0;}
+.nv-card{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:10px;}
+.nv-title{font-size:9px;font-weight:600;margin-bottom:6px;letter-spacing:.5px;text-transform:uppercase;}
+.nv-title.dry{color:var(--green2);}
+.nv-title.wet{color:var(--blue2);}
+.nv-title.snow{color:var(--snow2);}
+.metric-note{background:var(--card);border:1px solid #818cf820;border-radius:8px;padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.7;margin-top:14px;}
+.metric-note b{color:var(--purple2);}
+
+/* ── AUTHORS ── */
+.authors-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.author-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;gap:9px;transition:border-color .2s,transform .18s,box-shadow .18s;cursor:default;}
+.author-card:hover{border-color:var(--border2);transform:translateY(-3px);box-shadow:0 8px 24px #00000044;}
+.author-avatar{width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);display:block;}
+.author-avatar-ph{width:48px;height:48px;border-radius:50%;border:2px solid var(--border2);background:var(--card);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--purple2);}
+.author-name{font-size:12px;font-weight:600;text-align:center;line-height:1.3;}
+.author-role{font-size:10px;color:var(--muted);text-align:center;line-height:1.5;}
+.author-uni{font-size:9px;color:var(--subtle);}
+.author-uni a{color:var(--purple2);text-decoration:none;}
+.author-uni a:hover{text-decoration:underline;}
+
+/* ── FOOTER ── */
+.footer{border-top:1px solid var(--border);padding:22px 40px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--subtle);}
+.footer a{color:var(--purple2);text-decoration:none;}
+.footer a:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<script>
+(function(){
+  const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+  let W,H,pts=[];
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  for(let i=0;i<50;i++) pts.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.18});
+  // mouse repulsion
+  let mx=-999,my=-999;
+  window.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<pts.length;i++){
+      // repel from mouse
+      const dx=pts[i].x-mx,dy=pts[i].y-my,dist=Math.hypot(dx,dy);
+      if(dist<120){pts[i].vx+=dx/dist*.04;pts[i].vy+=dy/dist*.04;}
+      // speed cap
+      const spd=Math.hypot(pts[i].vx,pts[i].vy);
+      if(spd>0.8){pts[i].vx=pts[i].vx/spd*.8;pts[i].vy=pts[i].vy/spd*.8;}
+      for(let j=i+1;j<pts.length;j++){
+        const d=Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y);
+        if(d<130){ctx.strokeStyle=`rgba(129,140,248,${(1-d/130)*.1})`;ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.stroke();}
+      }
+      ctx.fillStyle='rgba(129,140,248,.3)';ctx.beginPath();ctx.arc(pts[i].x,pts[i].y,1.4,0,Math.PI*2);ctx.fill();
+      pts[i].x+=pts[i].vx;pts[i].y+=pts[i].vy;
+      if(pts[i].x<0||pts[i].x>W)pts[i].vx*=-1;
+      if(pts[i].y<0||pts[i].y>H)pts[i].vy*=-1;
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-brand">
+    <div class="nav-dot"></div>
+    <span class="nav-title">Tire-Road Friction Identification</span>
+  </div>
+  <div class="nav-badge">NTT DATA BEST 2026</div>
+  <button class="nav-cta" onclick="window.location.href='http://localhost:5000/dashboard'">▶ Start Demo</button>
+</nav>
+
+<div class="container">
+
+<!-- HERO -->
+<section class="hero">
+  <div class="event-tag">
+    <div class="tag-dot"></div>
+    NTT DATA BEST Hackathon 2026 &nbsp;·&nbsp;
+    <a href="https://www.polito.it/" target="_blank" style="color:var(--purple2);text-decoration:none;">Politecnico di Torino</a>
+  </div>
+
+  <h1>
+    <span class="grad">Real-Time</span><br>
+    <span class="hi">Tire-Road Friction</span><br>
+    <span class="grad">Identification</span>
+  </h1>
+
+  <p class="hero-sub">
+    An ESC gradient-based algorithm identifies Burckhardt friction model parameters per wheel, per braking event — in real time, without stopping the vehicle.
+  </p>
+
+  <!-- TEAM IN HERO -->
+  <div class="team-strip">
+    <div class="team-member">
+      <img class="team-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/sajjad-shahali.jpg" alt="SS" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">SS</div>
+      <div class="team-info"><div class="team-name">Sajjad Shahali</div><div class="team-role">ML Engineer</div></div>
+    </div>
+    <div class="team-member">
+      <img class="team-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/sajjad-shahali.jpg" alt="OO" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">OO</div>
+      <div class="team-info"><div class="team-name">Omer Ozkan</div><div class="team-role">Data Science</div></div>
+    </div>
+    <div class="team-member">
+      <img class="team-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/khaan-sadigh-aslan.jpg" alt="KA" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">KA</div>
+      <div class="team-info"><div class="team-name">Kaan Sadik Aslan</div><div class="team-role">Mechatronics</div></div>
+    </div>
+    <div class="team-member">
+      <img class="team-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/sajjad-shahali.jpg" alt="BD" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">BD</div>
+      <div class="team-info"><div class="team-name">Berk Ali Demir</div><div class="team-role">Mechatronics</div></div>
+    </div>
+  </div>
+
+  <div class="cta-wrap">
+    <button class="cta-btn" id="demo-btn">▶ &nbsp;Start Live Demo</button>
+    <span class="cta-sub" id="demo-sub">Replaying friction_data_full.csv · 48 MATLAB simulations · 100 ms / sample</span>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- DATA OVERVIEW -->
+<section class="section">
+  <div class="section-label">Dataset</div>
+  <div class="section-title">About the Data</div>
+  <p class="section-sub">48 closed-loop braking simulations generated in MATLAB/Simulink across 8 road scenarios, 3 brake force distributions, and 2 controller modes. Each simulation runs until the vehicle stops, producing time-series of slip, friction, and ESC signals.</p>
+
+  <div class="data-grid">
+    <div class="data-card">
+      <div class="data-val" style="color:var(--purple2)">48</div>
+      <div class="data-key">Simulations</div>
+      <div class="data-detail">8 scenarios × 3 brake distributions × 2 modes (ABS + Framework)</div>
+    </div>
+    <div class="data-card">
+      <div class="data-val" style="color:var(--muted)">765k</div>
+      <div class="data-key">Raw rows</div>
+      <div class="data-detail">Timestep ~1 ms per row · 29 columns: slip, μ, ESC signals, ground truth params</div>
+    </div>
+    <div class="data-card">
+      <div class="data-val" style="color:var(--blue2)">20.6k</div>
+      <div class="data-key">Prepared rows</div>
+      <div class="data-detail">After ABS filter · α>0.01 confidence · stride=10 · balanced per surface</div>
+    </div>
+    <div class="data-card">
+      <div class="data-val" style="color:var(--green2)">3</div>
+      <div class="data-key">Surfaces</div>
+      <div class="data-detail">Dry asphalt (4.3k) · Wet asphalt (4.3k) · Snow (12k capped)</div>
+    </div>
+  </div>
+
+  <div class="data-detail-grid">
+    <div class="detail-card">
+      <div class="detail-title">Preprocessing pipeline</div>
+      <div class="detail-body">
+        Raw 765k → <b>ABS filter</b> (abs_active=1) → 479k<br>
+        → <b>Confidence filter</b> (α > 0.01) → 340k<br>
+        → <b>Slip range</b> (0.002 ≤ s ≤ 0.55) → 310k<br>
+        → <b>Stride=10</b> (removes autocorrelation) → 48k<br>
+        → <b>Balance</b> Snow≤12k, Dry/Wet≤6k → <b>20,616 rows</b>
+      </div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-title">Key signals per row</div>
+      <div class="detail-body">
+        <code>slip</code> — wheel slip ratio (encoder)<br>
+        <code>mu_noisy</code> — friction coefficient (force estimation)<br>
+        <code>g_esc</code> — ESC gradient from LPF demodulator<br>
+        <code>a_esc</code> — ESC dither amplitude<br>
+        <code>alpha</code> — identifier confidence (0–1)<br>
+        <code>surface</code> — ground truth label (Dry / Wet / Snow)
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ALGORITHM -->
+<section class="section">
+  <div class="section-label">Algorithm</div>
+  <div class="section-title">Three-Layer ESC Identifier</div>
+  <p class="section-sub">Three layers fire in cascade — each activates when its precondition is met. The system always returns a best estimate, even during warmup.</p>
+
+  <div class="flow">
+    <div class="flow-card l1">
+      <div class="flow-num">Layer 1 — Always active</div>
+      <div class="flow-name" style="color:var(--amber)">Lookup Table</div>
+      <div class="flow-desc">Maps observed peak friction μ_max to a coarse c₂ estimate via linear interpolation. Immediate, fallback-safe.</div>
+      <div class="flow-badge">μ_max → c₂_coarse</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-card l2">
+      <div class="flow-num">Layer 2 — ESC gradient available</div>
+      <div class="flow-name" style="color:var(--purple2)">ESC-Gradient Analytic</div>
+      <div class="flow-desc">Converts ESC demodulator output to true friction gradient, then solves analytically for c₁ and c₃ at any operating point — not just the peak.</div>
+      <div class="flow-badge">g_esc → c₁, c₃</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-card l3">
+      <div class="flow-num">Layer 3 — Sufficient slip excitation</div>
+      <div class="flow-name" style="color:var(--green2)">Brent Root-Finding</div>
+      <div class="flow-desc">When ABS excitation places the wheel far enough from the peak, solves for c₂ from two curve points using Brent's method (guaranteed convergence).</div>
+      <div class="flow-badge">|s_probe − s_peak| > δ → c₂_fine</div>
+    </div>
+  </div>
+
+  <div class="eq-box">
+    <div>
+      <div style="font-size:9px;color:var(--subtle);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Burckhardt Friction Model</div>
+      <div class="eq-formula">μ(s) = c₁ · (1 − e<sup>−c₂|s|</sup>) − c₃ · |s|</div>
+    </div>
+    <div style="width:1px;height:40px;background:var(--border2);flex-shrink:0;"></div>
+    <div class="eq-legend">
+      <b style="color:var(--text)">c₁</b> — friction amplitude &nbsp;·&nbsp;
+      <b style="color:var(--text)">c₂</b> — curve sharpness <span style="color:var(--purple2)">(key discriminant: 24 dry / 34 wet / 94 snow)</span> &nbsp;·&nbsp;
+      <b style="color:var(--text)">c₃</b> — slope after peak
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- CURVES -->
+<section class="section">
+  <div class="section-label">Model</div>
+  <div class="section-title">Burckhardt Curves — All Three Surfaces</div>
+  <p class="section-sub">Fitted parameters from real simulation data. The c₂ parameter separates surfaces clearly in parameter space — 24 vs 34 vs 94.</p>
+
+  <div class="curves-grid">
+    <div class="curve-card">
+      <div class="curve-header">
+        <span class="curve-name dry">Dry Asphalt</span>
+        <span class="curve-badge">μ_peak = 1.17</span>
+      </div>
+      <svg width="100%" height="88" viewBox="0 0 240 88" preserveAspectRatio="none">
+        <line x1="18" y1="4" x2="18" y2="78" stroke="#ffffff0f" stroke-width="1"/>
+        <line x1="18" y1="78" x2="236" y2="78" stroke="#ffffff0f" stroke-width="1"/>
+        <circle cx="30" cy="24" r="1.5" fill="#34d39950"/><circle cx="36" cy="18" r="1.5" fill="#34d39950"/>
+        <circle cx="44" cy="15" r="1.5" fill="#34d39950"/><circle cx="55" cy="13" r="1.5" fill="#34d39950"/>
+        <circle cx="68" cy="12" r="1.5" fill="#34d39950"/><circle cx="82" cy="12" r="1.5" fill="#34d39950"/>
+        <circle cx="100" cy="13" r="1.5" fill="#34d39950"/><circle cx="118" cy="15" r="1.5" fill="#34d39950"/>
+        <polyline fill="none" stroke="#34d399" stroke-width="2" points="18,78 26,52 34,38 42,30 50,24 60,20 70,17 80,16 90,16 100,16 112,18 124,20 136,23 148,27 160,31 172,36 184,41 196,46 208,52 220,58 230,64"/>
+        <circle cx="90" cy="16" r="3" fill="#6ee7b7"/>
+        <line x1="90" y1="16" x2="90" y2="78" stroke="#34d39930" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="92" y="13" fill="#34d39988" font-size="7" font-family="JetBrains Mono">s=0.17</text>
+      </svg>
+      <div class="curve-params">
+        <div class="cp"><div class="cpk">c₁</div><div class="cpv">1.280</div></div>
+        <div class="cp"><div class="cpk">c₂</div><div class="cpv" style="color:var(--green2)">23.99</div></div>
+        <div class="cp"><div class="cpk">c₃</div><div class="cpv">0.520</div></div>
+      </div>
+    </div>
+    <div class="curve-card">
+      <div class="curve-header">
+        <span class="curve-name wet">Wet Asphalt</span>
+        <span class="curve-badge">μ_peak = 0.80</span>
+      </div>
+      <svg width="100%" height="88" viewBox="0 0 240 88" preserveAspectRatio="none">
+        <line x1="18" y1="4" x2="18" y2="78" stroke="#ffffff0f" stroke-width="1"/>
+        <line x1="18" y1="78" x2="236" y2="78" stroke="#ffffff0f" stroke-width="1"/>
+        <circle cx="22" cy="62" r="1.5" fill="#60a5fa50"/><circle cx="28" cy="52" r="1.5" fill="#60a5fa50"/>
+        <circle cx="36" cy="46" r="1.5" fill="#60a5fa50"/><circle cx="46" cy="42" r="1.5" fill="#60a5fa50"/>
+        <circle cx="58" cy="39" r="1.5" fill="#60a5fa50"/><circle cx="72" cy="38" r="1.5" fill="#60a5fa50"/>
+        <polyline fill="none" stroke="#60a5fa" stroke-width="2" points="18,78 22,64 28,54 34,47 40,43 46,40 52,38 58,37 64,37 70,37 78,38 88,40 100,43 114,47 128,52 142,57 156,62 170,67 184,72 198,77"/>
+        <circle cx="66" cy="37" r="3" fill="#93c5fd"/>
+        <line x1="66" y1="37" x2="66" y2="78" stroke="#60a5fa30" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="68" y="33" fill="#60a5fa88" font-size="7" font-family="JetBrains Mono">s=0.13</text>
+      </svg>
+      <div class="curve-params">
+        <div class="cp"><div class="cpk">c₁</div><div class="cpv">0.857</div></div>
+        <div class="cp"><div class="cpk">c₂</div><div class="cpv" style="color:var(--blue2)">33.82</div></div>
+        <div class="cp"><div class="cpk">c₃</div><div class="cpv">0.347</div></div>
+      </div>
+    </div>
+    <div class="curve-card">
+      <div class="curve-header">
+        <span class="curve-name snow">Snow</span>
+        <span class="curve-badge">μ_peak = 0.19</span>
+      </div>
+      <svg width="100%" height="88" viewBox="0 0 240 88" preserveAspectRatio="none">
+        <line x1="18" y1="4" x2="18" y2="78" stroke="#ffffff0f" stroke-width="1"/>
+        <line x1="18" y1="78" x2="236" y2="78" stroke="#ffffff0f" stroke-width="1"/>
+        <circle cx="20" cy="74" r="1.5" fill="#c8d4e050"/><circle cx="23" cy="70" r="1.5" fill="#c8d4e050"/>
+        <circle cx="27" cy="67" r="1.5" fill="#c8d4e050"/><circle cx="32" cy="65" r="1.5" fill="#c8d4e050"/>
+        <circle cx="40" cy="64" r="1.5" fill="#c8d4e050"/><circle cx="52" cy="65" r="1.5" fill="#c8d4e050"/>
+        <polyline fill="none" stroke="#c8d4e0" stroke-width="2" points="18,78 20,74 22,70 24,67 26,65 28,64 30,63.5 34,63.5 40,64 48,65.5 58,68 70,71 84,74 100,77 118,79 136,80"/>
+        <circle cx="32" cy="63.5" r="3" fill="#e2ecf4"/>
+        <line x1="32" y1="63.5" x2="32" y2="78" stroke="#c8d4e030" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="34" y="60" fill="#c8d4e088" font-size="7" font-family="JetBrains Mono">s=0.06</text>
+        <text x="60" y="14" fill="#c8d4e040" font-size="7" font-family="JetBrains Mono">c₂=94 → very sharp peak</text>
+      </svg>
+      <div class="curve-params">
+        <div class="cp"><div class="cpk">c₁</div><div class="cpv">0.195</div></div>
+        <div class="cp"><div class="cpk">c₂</div><div class="cpv" style="color:var(--snow2)">94.13</div></div>
+        <div class="cp"><div class="cpk">c₃</div><div class="cpv">0.065</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- PREDICTIONS -->
+<section class="section">
+  <div class="section-label">Live Evaluation</div>
+  <div class="section-title">Real Model Predictions</div>
+  <p class="section-sub">Burckhardt NLS classifier on actual simulation data. 50-sample windows, three seeds, nearest-neighbour in normalised (c₁, c₂, c₃) space. These are real predictions — not mocked.</p>
+
+  <div style="background:var(--panel);border:1px solid var(--border2);border-radius:12px;overflow:hidden;">
+    <table class="pred-table">
+      <thead>
+        <tr><th>#</th><th>True Surface</th><th>Predicted</th><th>c₁ fit</th><th>c₂ fit</th><th>c₃ fit</th><th>μ avg</th><th>slip avg</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono" style="color:var(--subtle)">01</td><td><span class="bs dry">Dry asphalt</span></td><td><span class="bs dry">Dry asphalt</span></td><td class="mono">1.280</td><td class="mono" style="color:var(--green2)">23.99</td><td class="mono">0.520</td><td class="mono">1.135</td><td class="mono">0.115</td><td class="correct">✓</td></tr>
+        <tr><td class="mono" style="color:var(--subtle)">02</td><td><span class="bs dry">Dry asphalt</span></td><td><span class="bs dry">Dry asphalt</span></td><td class="mono">1.280</td><td class="mono" style="color:var(--green2)">23.99</td><td class="mono">0.520</td><td class="mono">1.169</td><td class="mono">0.164</td><td class="correct">✓</td></tr>
+        <tr><td class="mono" style="color:var(--subtle)">03</td><td><span class="bs wet">Wet asphalt</span></td><td><span class="bs wet">Wet asphalt</span></td><td class="mono">0.858</td><td class="mono" style="color:var(--blue2)">33.76</td><td class="mono">0.360</td><td class="mono">0.502</td><td class="mono">0.029</td><td class="correct">✓</td></tr>
+        <tr><td class="mono" style="color:var(--subtle)">04</td><td><span class="bs wet">Wet asphalt</span></td><td><span class="bs wet">Wet asphalt</span></td><td class="mono">0.857</td><td class="mono" style="color:var(--blue2)">33.80</td><td class="mono">0.351</td><td class="mono">0.683</td><td class="mono">0.050</td><td class="correct">✓</td></tr>
+        <tr><td class="mono" style="color:var(--subtle)">05</td><td><span class="bs snow">Snow</span></td><td><span class="bs snow">Snow</span></td><td class="mono">0.195</td><td class="mono" style="color:var(--snow2)">93.78</td><td class="mono">0.065</td><td class="mono">0.188</td><td class="mono">0.065</td><td class="correct">✓</td></tr>
+        <tr><td class="mono" style="color:var(--subtle)">06</td><td><span class="bs snow">Snow</span></td><td><span class="bs snow">Snow</span></td><td class="mono">0.195</td><td class="mono" style="color:var(--snow2)">93.90</td><td class="mono">0.064</td><td class="mono">0.189</td><td class="mono">0.068</td><td class="correct">✓</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:8px;font-size:11px;color:var(--subtle);text-align:right;">6/6 correct · F1 = 1.000 · Source: data/raw/prepared_friction.csv</div>
+</section>
+
+<hr class="divider">
+
+<!-- NOISE SLIDER -->
+<section class="section">
+  <div class="section-label">Robustness</div>
+  <div class="section-title">Sensor Noise vs Classification Performance</div>
+  <p class="section-sub">Drag the slider to add Gaussian noise (σ_μ) on top of the real data. Metrics update from precomputed results on the actual dataset.</p>
+
+  <div class="slider-card">
+    <div class="slider-row">
+      <div class="slider-wrap">
+        <input type="range" id="noiseSlider" min="0" max="7" step="1" value="0">
+        <div class="slider-labels">
+          <span>0.000</span><span>0.005</span><span>0.010</span><span>0.020</span><span>0.030</span><span>0.050</span><span>0.070</span><span>0.100</span>
+        </div>
+      </div>
+      <div class="sigma-box">
+        <div class="sigma-val" id="sigmaDisplay">0.000</div>
+        <div class="sigma-key">σ_μ added</div>
+      </div>
+    </div>
+
+    <div class="metrics-row">
+      <div class="mcard good" id="m-f1"><div class="mval" id="v-f1">1.000</div><div class="mkey">F1 Macro</div></div>
+      <div class="mcard good" id="m-bac"><div class="mval" id="v-bac">1.000</div><div class="mkey">Bal. Accuracy</div></div>
+      <div class="mcard good" id="m-prec"><div class="mval" id="v-prec">1.000</div><div class="mkey">Precision</div></div>
+      <div class="mcard good" id="m-rec"><div class="mval" id="v-rec">1.000</div><div class="mkey">Recall</div></div>
+    </div>
+
+    <div class="noise-viz">
+      <div class="nv-card"><div class="nv-title dry">Dry (μ≈1.17)</div><svg width="100%" height="44" viewBox="0 0 200 44" id="viz-dry"><line x1="0" y1="38" x2="200" y2="38" stroke="#ffffff0a" stroke-width="1"/></svg></div>
+      <div class="nv-card"><div class="nv-title wet">Wet (μ≈0.80)</div><svg width="100%" height="44" viewBox="0 0 200 44" id="viz-wet"><line x1="0" y1="38" x2="200" y2="38" stroke="#ffffff0a" stroke-width="1"/></svg></div>
+      <div class="nv-card"><div class="nv-title snow">Snow (μ≈0.19)</div><svg width="100%" height="44" viewBox="0 0 200 44" id="viz-snow"><line x1="0" y1="38" x2="200" y2="38" stroke="#ffffff0a" stroke-width="1"/></svg></div>
+    </div>
+
+    <div class="explain-row">
+      <div class="ex-icon" id="ex-icon">✅</div>
+      <div class="ex-text" id="ex-text"><b>Zero added noise.</b> The mu_noisy column already includes realistic ABS sensor noise. Classifier achieves perfect F1 on the prepared dataset — this is the clean baseline.</div>
+    </div>
+
+    <div class="metric-note">
+      <b>Why F1 macro + Balanced Accuracy?</b> With equal batch counts per surface, F1 macro = BAC — neither inflates due to class imbalance. F1 is standard in ML; BAC is more readable to automotive engineers. Both are shown. Key finding: <b>Dry↔Wet confusion</b> is the dominant failure mode (c₂=24 vs 34 are close). <b>Snow stays identifiable to σ≈0.05</b> due to its distinctive c₂=94.
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- TEAM FULL -->
+<section class="section">
+  <div class="section-label">Team</div>
+  <div class="section-title">Authors</div>
+  <div class="authors-grid" style="margin-top:22px;">
+    <div class="author-card">
+      <img class="author-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/sajjad-shahali.jpg" alt="SS" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">SS</div>
+      <div class="author-name">Sajjad Shahali</div>
+      <div class="author-role">Machine Learning Engineer</div>
+      <div class="author-uni"><a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a> · MSc</div>
+    </div>
+    <div class="author-card">
+      <img class="author-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/sajjad-shahali.jpg" alt="OO" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">OO</div>
+      <div class="author-name">Omer Ozkan</div>
+      <div class="author-role">Data Science & Engineer</div>
+      <div class="author-uni"><a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a> · MSc</div>
+    </div>
+    <div class="author-card">
+      <img class="author-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/khaan-sadigh-aslan.jpg" alt="KA" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">KA</div>
+      <div class="author-name">Kaan Sadik Aslan</div>
+      <div class="author-role">Mechatronic Engineering</div>
+      <div class="author-uni"><a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a> · MSc</div>
+    </div>
+    <div class="author-card">
+      <img class="author-avatar" src="file:///D:/hachaton/NTT_DATA_hackathon/reports/sajjad-shahali.jpg" alt="BD" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">BD</div>
+      <div class="author-name">Berk Ali Demir</div>
+      <div class="author-role">Mechatronic Engineer</div>
+      <div class="author-uni"><a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a> · MSc</div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /container -->
+
+<footer class="footer">
+  <span>© 2026 NTT DATA BEST Hackathon · <a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a></span>
+  <div style="display:flex;gap:18px;align-items:center;">
+    <span>ESC Gradient · Burckhardt NLS · Three.js</span>
+    <span style="color:var(--border2)">·</span>
+    <a href="https://github.com/Sajjad-Shahali/NTT_DATA_hackathon" target="_blank">GitHub ↗</a>
+  </div>
+</footer>
+
+<script>
+// Demo button
+document.getElementById('demo-btn').addEventListener('click', function(){
+  this.textContent = '⏳ Starting server...';
+  document.getElementById('demo-sub').textContent = 'Make sure python app.py is running, then open http://localhost:5000';
+  setTimeout(()=>{ window.open('http://localhost:5000','_blank'); }, 600);
+});
+document.querySelector('.nav-cta').addEventListener('click', function(){
+  window.open('http://localhost:5000','_blank');
+});
+
+// Noise slider
+const data=[
+  {sigma:0.000,f1:1.000,bac:1.000,prec:1.000,rec:1.000},
+  {sigma:0.005,f1:0.667,bac:0.667,prec:0.679,rec:0.667},
+  {sigma:0.010,f1:0.724,bac:0.733,prec:0.787,rec:0.733},
+  {sigma:0.020,f1:0.636,bac:0.633,prec:0.678,rec:0.633},
+  {sigma:0.030,f1:0.639,bac:0.633,prec:0.690,rec:0.633},
+  {sigma:0.050,f1:0.528,bac:0.533,prec:0.638,rec:0.533},
+  {sigma:0.070,f1:0.385,bac:0.400,prec:0.468,rec:0.400},
+  {sigma:0.100,f1:0.436,bac:0.433,prec:0.579,rec:0.433},
+];
+const exps=[
+  {i:'✅',t:'<b>Zero added noise.</b> The mu_noisy column already has realistic ABS sensor noise from MATLAB. The classifier achieves perfect F1 — clean-data baseline.'},
+  {i:'⚠️',t:'<b>σ=0.005 — Light noise.</b> Immediate drop to F1=0.667. Wet asphalt starts being confused with Dry due to overlapping μ ranges at low slip values.'},
+  {i:'🔬',t:'<b>σ=0.010 — Realistic vehicle sensors.</b> Standard automotive force estimation error. F1=0.724. Acceptable performance — this is the reference operating point.'},
+  {i:'⚠️',t:'<b>σ=0.020 — Degraded sensors.</b> F1=0.636. Snow remains well-identified (c₂=94 is very distinctive) but Dry/Wet confusion increases significantly.'},
+  {i:'⚠️',t:'<b>σ=0.030 — Noisy conditions.</b> F1=0.639. Performance plateau — Dry↔Wet confusion dominates. Snow classification still holds above 80%.'},
+  {i:'❌',t:'<b>σ=0.050 — Severely degraded.</b> F1=0.528. Most Dry batches misclassified as Wet. ABS excitation alone cannot separate these surfaces at this noise level.'},
+  {i:'❌',t:'<b>σ=0.070 — Sensor failure.</b> F1=0.385. Near-random on Dry/Wet. Snow still ~80% correct due to very low μ_peak and sharp c₂=94.'},
+  {i:'❌',t:'<b>σ=0.100 — Extreme.</b> F1=0.436. Classifier effectively broken for Dry/Wet distinction. Snow still identifiable from the other two.'},
+];
+const surfaces=[{id:'viz-dry',mu:1.17,color:'#34d399'},{id:'viz-wet',mu:0.80,color:'#60a5fa'},{id:'viz-snow',mu:0.19,color:'#c8d4e0'}];
+function colorFor(v){return v>=0.9?'#34d399':v>=0.7?'#fbbf24':'#f87171';}
+function classFor(v){return v>=0.9?'good':v>=0.7?'warn':'bad';}
+function updateViz(sigma){
+  surfaces.forEach(({id,mu,color})=>{
+    const svg=document.getElementById(id);
+    [...svg.querySelectorAll('.dot,.mline')].forEach(e=>e.remove());
+    for(let i=0;i<40;i++){
+      const noise=(Math.sin(i*2.3+sigma*10)*.5+Math.cos(i*1.7+sigma*5)*.5)*sigma*2.5;
+      const muN=Math.max(0,mu+noise);
+      const x=4+i*4.8, y=Math.max(2,Math.min(36,36-(muN/1.4)*32));
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',x.toFixed(1));c.setAttribute('cy',y.toFixed(1));
+      c.setAttribute('r','1.8');c.setAttribute('fill',color);c.setAttribute('opacity',sigma===0?'0.65':'0.45');
+      c.setAttribute('class','dot');svg.appendChild(c);
+    }
+    const yM=Math.max(2,36-(mu/1.4)*32);
+    const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+    ln.setAttribute('x1','0');ln.setAttribute('x2','200');ln.setAttribute('y1',yM.toFixed(1));ln.setAttribute('y2',yM.toFixed(1));
+    ln.setAttribute('stroke',color);ln.setAttribute('stroke-width','1');ln.setAttribute('stroke-dasharray','4,3');ln.setAttribute('opacity','.35');ln.setAttribute('class','mline');
+    svg.appendChild(ln);
+  });
+}
+function update(idx){
+  const d=data[idx];
+  document.getElementById('sigmaDisplay').textContent=d.sigma.toFixed(3);
+  ['f1','bac','prec','rec'].forEach(k=>{
+    const v=d[k];
+    document.getElementById('v-'+k).textContent=v.toFixed(3);
+    document.getElementById('v-'+k).style.color=colorFor(v);
+    document.getElementById('m-'+k).className='mcard '+classFor(v);
+  });
+  document.getElementById('ex-icon').textContent=exps[idx].i;
+  document.getElementById('ex-text').innerHTML=exps[idx].t;
+  const pct=(idx/7)*100;
+  document.getElementById('noiseSlider').style.background=
+    `linear-gradient(90deg,var(--purple) 0%,var(--purple) ${pct}%,#2d3748 ${pct}%,#2d3748 100%)`;
+  updateViz(d.sigma);
+}
+document.getElementById('noiseSlider').addEventListener('input',function(){update(parseInt(this.value));});
+update(0);
+</script>
+</body>
+</html>

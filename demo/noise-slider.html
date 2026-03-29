@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Noise Robustness Slider — Real Data</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0e1118;color:#f0f4f8;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 24px;}
+.card{background:#1a2030;border:1px solid #ffffff1e;border-radius:16px;padding:32px;max-width:780px;width:100%;}
+.label{font-size:9px;color:#4a5568;letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin-bottom:8px;}
+.title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:6px;}
+.sub{font-size:13px;color:#8899aa;line-height:1.6;margin-bottom:28px;max-width:560px;}
+
+/* SLIDER */
+.slider-row{display:flex;align-items:center;gap:16px;margin-bottom:24px;}
+.slider-wrap{flex:1;position:relative;}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:linear-gradient(90deg,#818cf8 0%,#818cf8 0%,#2d3748 0%);outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#818cf8;border:3px solid #0e1118;box-shadow:0 0 10px #818cf855;cursor:pointer;}
+.slider-labels{display:flex;justify-content:space-between;font-size:9px;color:#4a5568;font-family:'JetBrains Mono',monospace;margin-top:5px;}
+.sigma-display{background:#0e1118;border:1px solid #ffffff18;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;}
+.sigma-val{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#818cf8;}
+.sigma-key{font-size:9px;color:#4a5568;margin-top:2px;letter-spacing:1px;}
+
+/* METRICS GRID */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}
+.metric{background:#0e1118;border:1px solid #ffffff0f;border-radius:10px;padding:14px;text-align:center;transition:border-color .3s;}
+.metric.good{border-color:#34d39930;}
+.metric.warn{border-color:#fbbf2430;}
+.metric.bad{border-color:#f8717130;}
+.metric-val{font-size:24px;font-weight:700;font-family:'JetBrains Mono',monospace;transition:color .3s;}
+.metric-key{font-size:9px;color:#4a5568;margin-top:4px;letter-spacing:1px;text-transform:uppercase;}
+.metric-note{font-size:9px;margin-top:4px;color:#4a5568;}
+
+/* EXPLANATION BOX */
+.explain{background:#0e1118;border:1px solid #ffffff0f;border-radius:10px;padding:16px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;}
+.explain-icon{font-size:20px;flex-shrink:0;margin-top:2px;}
+.explain-text{font-size:12px;color:#8899aa;line-height:1.7;}
+.explain-text b{color:#f0f4f8;}
+
+/* NOISE VISUALIZATION */
+.noise-viz{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;}
+.noise-card{background:#0e1118;border:1px solid #ffffff0f;border-radius:8px;padding:12px;}
+.noise-title{font-size:10px;margin-bottom:8px;font-weight:600;}
+.noise-title.dry{color:#6ee7b7;}
+.noise-title.wet{color:#93c5fd;}
+.noise-title.snow{color:#c8d4e0;}
+
+/* METRIC NOTE BOX */
+.metric-box{background:#141920;border:1px solid #818cf830;border-radius:10px;padding:14px 16px;font-size:12px;color:#8899aa;line-height:1.7;}
+.metric-box b{color:#a5b4fc;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="label">Robustness Analysis</div>
+  <div class="title">Noise vs Classification Performance</div>
+  <p class="sub">Drag the slider to add Gaussian sensor noise (σ_μ) on top of the real simulation data. Watch F1 and Balanced Accuracy respond — computed from actual predictions on data/raw/prepared_friction.csv.</p>
+
+  <!-- SLIDER -->
+  <div class="slider-row">
+    <div class="slider-wrap">
+      <input type="range" id="noiseSlider" min="0" max="7" step="1" value="0">
+      <div class="slider-labels">
+        <span>σ=0.000<br>ideal</span>
+        <span>0.005</span>
+        <span>0.010<br>realistic</span>
+        <span>0.020</span>
+        <span>0.030</span>
+        <span>0.050</span>
+        <span>0.070</span>
+        <span>0.100<br>extreme</span>
+      </div>
+    </div>
+    <div class="sigma-display">
+      <div class="sigma-val" id="sigmaDisplay">0.000</div>
+      <div class="sigma-key">σ_μ added</div>
+    </div>
+  </div>
+
+  <!-- METRICS -->
+  <div class="metrics">
+    <div class="metric" id="m-f1">
+      <div class="metric-val" id="v-f1">1.000</div>
+      <div class="metric-key">F1 Macro</div>
+      <div class="metric-note" id="n-f1">Perfect</div>
+    </div>
+    <div class="metric" id="m-bac">
+      <div class="metric-val" id="v-bac">1.000</div>
+      <div class="metric-key">Bal. Accuracy</div>
+      <div class="metric-note" id="n-bac">= F1 here</div>
+    </div>
+    <div class="metric" id="m-prec">
+      <div class="metric-val" id="v-prec">1.000</div>
+      <div class="metric-key">Precision</div>
+      <div class="metric-note">macro avg</div>
+    </div>
+    <div class="metric" id="m-rec">
+      <div class="metric-val" id="v-rec">1.000</div>
+      <div class="metric-key">Recall</div>
+      <div class="metric-note">macro avg</div>
+    </div>
+  </div>
+
+  <!-- NOISE VIZ -->
+  <div class="noise-viz">
+    <div class="noise-card">
+      <div class="noise-title dry">Dry Asphalt (μ≈1.17)</div>
+      <svg width="100%" height="52" viewBox="0 0 200 52" id="viz-dry">
+        <line x1="0" y1="40" x2="200" y2="40" stroke="#ffffff0a" stroke-width="1"/>
+        <!-- dots drawn by JS -->
+      </svg>
+    </div>
+    <div class="noise-card">
+      <div class="noise-title wet">Wet Asphalt (μ≈0.80)</div>
+      <svg width="100%" height="52" viewBox="0 0 200 52" id="viz-wet">
+        <line x1="0" y1="40" x2="200" y2="40" stroke="#ffffff0a" stroke-width="1"/>
+      </svg>
+    </div>
+    <div class="noise-card">
+      <div class="noise-title snow">Snow (μ≈0.19)</div>
+      <svg width="100%" height="52" viewBox="0 0 200 52" id="viz-snow">
+        <line x1="0" y1="40" x2="200" y2="40" stroke="#ffffff0a" stroke-width="1"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- EXPLAIN -->
+  <div class="explain" id="explain-box">
+    <div class="explain-icon">✅</div>
+    <div class="explain-text" id="explain-text">
+      <b>Zero added noise.</b> The existing mu_noisy column already includes realistic ABS sensor noise from the MATLAB simulation. The classifier achieves perfect F1 on the prepared dataset — this is the baseline.
+    </div>
+  </div>
+
+  <!-- METRIC EXPLANATION -->
+  <div class="metric-box">
+    <b>Why F1 macro?</b> Our 3 surfaces are evaluated with equal batch counts (10 batches × 3 surfaces), so the dataset is balanced at evaluation time. In this regime, F1 macro = Balanced Accuracy — both are appropriate. F1 is preferred in ML literature; BAC is more interpretable to automotive/safety engineers. <b>Neither inflates scores due to class imbalance.</b> MCC would also be valid but is less standard in this domain.
+  </div>
+</div>
+
+<script>
+// Real data from Python run
+const data = [
+  {sigma:0.000, f1:1.000, bac:1.000, prec:1.000, rec:1.000},
+  {sigma:0.005, f1:0.667, bac:0.667, prec:0.679, rec:0.667},
+  {sigma:0.010, f1:0.724, bac:0.733, prec:0.787, rec:0.733},
+  {sigma:0.020, f1:0.636, bac:0.633, prec:0.678, rec:0.633},
+  {sigma:0.030, f1:0.639, bac:0.633, prec:0.690, rec:0.633},
+  {sigma:0.050, f1:0.528, bac:0.533, prec:0.638, rec:0.533},
+  {sigma:0.070, f1:0.385, bac:0.400, prec:0.468, rec:0.400},
+  {sigma:0.100, f1:0.436, bac:0.433, prec:0.579, rec:0.433},
+];
+
+const explanations = [
+  {icon:'✅', text:'<b>Zero added noise.</b> The existing mu_noisy column already contains realistic ABS sensor noise. The classifier achieves perfect F1 — this is the clean-data baseline.'},
+  {icon:'⚠️', text:'<b>σ=0.005 — Light noise.</b> A small additional perturbation causes immediate drop to F1=0.667. Wet asphalt starts being confused with Dry due to overlapping μ ranges at low slip.'},
+  {icon:'🔬', text:'<b>σ=0.010 — Realistic vehicle sensors.</b> Standard automotive force estimation error. F1=0.724. The classifier still performs acceptably — this is the reference operating point.'},
+  {icon:'⚠️', text:'<b>σ=0.020 — Degraded sensors.</b> F1 drops to 0.636. Snow remains well-identified (c₂=94 is very distinctive) but Dry/Wet confusion increases.'},
+  {icon:'⚠️', text:'<b>σ=0.030 — Noisy sensor conditions.</b> F1=0.639. Performance plateau — the main failure mode is Dry↔Wet confusion (c₂=24 vs 34), not Snow.'},
+  {icon:'❌', text:'<b>σ=0.050 — Severely degraded.</b> F1=0.528. More than half the Dry batches are misclassified as Wet. ABS slip excitation alone cannot separate these surfaces at this noise level.'},
+  {icon:'❌', text:'<b>σ=0.070 — Sensor failure level.</b> F1=0.385. Near-random performance on Dry/Wet. Snow is still identified correctly (~80%) due to its very low μ_peak and sharp c₂.'},
+  {icon:'❌', text:'<b>σ=0.100 — Extreme noise.</b> F1=0.436. Slightly better than σ=0.07 due to random fluctuations (small n=30). Classifier effectively broken for Dry/Wet distinction.'},
+];
+
+// Noise visualization — sample points around mu_peak per surface
+const surfaces = [
+  {id:'viz-dry',  mu:1.17, color:'#34d399', ybase:20},
+  {id:'viz-wet',  mu:0.80, color:'#60a5fa', ybase:28},
+  {id:'viz-snow', mu:0.19, color:'#c8d4e0', ybase:36},
+];
+
+function updateViz(sigma) {
+  const seed = 42;
+  surfaces.forEach(({id, mu, color, ybase}) => {
+    const svg = document.getElementById(id);
+    // remove old dots
+    [...svg.querySelectorAll('circle')].forEach(e=>e.remove());
+    for(let i=0;i<40;i++){
+      const noise = (Math.sin(i*2.3)*0.5 + Math.cos(i*1.7)*0.5) * sigma * 2;
+      const muN = Math.max(0, mu + noise);
+      const x = 5 + i*4.8;
+      const y = 38 - (muN / 1.3) * 34;
+      const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx', x.toFixed(1));
+      c.setAttribute('cy', Math.max(2, Math.min(38, y)).toFixed(1));
+      c.setAttribute('r', '2');
+      c.setAttribute('fill', color);
+      c.setAttribute('opacity', sigma === 0 ? '0.7' : '0.5');
+      svg.appendChild(c);
+    }
+    // draw mean line
+    const existing = svg.querySelector('line.mean');
+    if(existing) existing.remove();
+    const ln = document.createElementNS('http://www.w3.org/2000/svg','line');
+    const yMean = 38 - (mu / 1.3) * 34;
+    ln.setAttribute('x1','0'); ln.setAttribute('x2','200');
+    ln.setAttribute('y1', Math.max(2,yMean).toFixed(1));
+    ln.setAttribute('y2', Math.max(2,yMean).toFixed(1));
+    ln.setAttribute('stroke', color); ln.setAttribute('stroke-width','1');
+    ln.setAttribute('stroke-dasharray','4,3'); ln.setAttribute('opacity','.4');
+    ln.setAttribute('class','mean');
+    svg.appendChild(ln);
+  });
+}
+
+function colorForVal(v) {
+  if(v >= 0.9) return '#34d399';
+  if(v >= 0.7) return '#fbbf24';
+  return '#f87171';
+}
+function classForVal(v) {
+  if(v >= 0.9) return 'good';
+  if(v >= 0.7) return 'warn';
+  return 'bad';
+}
+
+function update(idx) {
+  const d = data[idx];
+  document.getElementById('sigmaDisplay').textContent = d.sigma.toFixed(3);
+
+  ['f1','bac','prec','rec'].forEach(k => {
+    const v = d[k === 'bac' ? 'bac' : k];
+    const el = document.getElementById('v-'+k);
+    const mel = document.getElementById('m-'+k);
+    el.textContent = v.toFixed(3);
+    el.style.color = colorForVal(v);
+    mel.className = 'metric ' + classForVal(v);
+  });
+
+  const ex = explanations[idx];
+  document.getElementById('explain-box').querySelector('.explain-icon').textContent = ex.icon;
+  document.getElementById('explain-text').innerHTML = ex.text;
+
+  // update slider gradient
+  const pct = (idx / 7) * 100;
+  document.getElementById('noiseSlider').style.background =
+    `linear-gradient(90deg,#818cf8 0%,#818cf8 ${pct}%,#2d3748 ${pct}%,#2d3748 100%)`;
+
+  updateViz(d.sigma);
+}
+
+document.getElementById('noiseSlider').addEventListener('input', function(){ update(parseInt(this.value)); });
+update(0);
+</script>
+</body>
+</html>
