@@ -282,16 +282,7 @@ Raw `friction_data_full.csv` (765k rows) → `prepared_friction.csv` (20,616 row
 | Stride=10 | Thin autocorrelated time-series per run×wheel | ~48,000 |
 | Balance | Snow cap=12,000 / Dry,Wet cap=6,000 each | **20,616** |
 
-### Classification results (unlabeled evaluation)
 
-| Surface | Precision | Recall | F1 | Batches |
-|---|---|---|---|---|
-| Dry asphalt | 1.0000 | 1.0000 | 1.0000 | 17 |
-| Wet asphalt | 1.0000 | 1.0000 | 1.0000 | 17 |
-| Snow | 1.0000 | 1.0000 | 1.0000 | 48 |
-| **Macro avg** | **1.0000** | **1.0000** | **1.0000** | 82 |
-
-Classifier: Burckhardt NLS fit → nearest-neighbour in normalised (c1, c2, c3) space.
 
 ---
 
