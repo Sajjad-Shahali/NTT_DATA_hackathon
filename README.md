@@ -141,13 +141,9 @@ NTT_DATA_hackathon/
 ├── models/                  # Save fitted models here
 ├── reports/
 │   └── plots/               # Auto-generated presentation plots (make_plots.py)
-├── deliverables/            # Hackathon submission content (use cases, proposal)
-│   ├── UC_001_friction_identification.md   # MAKE: Real-time friction identifier
-│   ├── UC_002_requirements_traceability.md # MAKE: GenAI ISO 26262 traceability
-│   ├── UC_003_code_migration_review.md     # BUY:  AI code migration & review
-│   ├── UC_004_synthetic_test_data.md       # BUY:  Synthetic test data generation
-│   ├── prioritization_matrix.md            # Scoring matrix + Make vs Buy rationale
-│   └── executive_proposal.md              # Full executive proposal (Parts 1–5)
+├── templates/               # Flask HTML templates (index.html, dashboard.html)
+├── static/img/              # Profile photos served by Flask
+├── demo/                    # Static HTML mockups (intro, dashboard previews)
 ├── rules/
 │   ├── hackathon_case_study.md          # Full case study documentation
 │   ├── use_case_template.md             # Use case definition template
@@ -410,20 +406,6 @@ Each team must define an **Executive Proposal** of 4 AI use cases (2 Make + 2 Bu
 
 See [rules/hackathon_case_study.md](rules/hackathon_case_study.md) for the full case study breakdown and [rules/use_case_template.md](rules/use_case_template.md) for the use case definition template.
 
-### Deliverables
-
-The `deliverables/` folder contains the complete hackathon submission content:
-
-| File | Type | Description |
-|---|---|---|
-| [UC_001_friction_identification.md](deliverables/UC_001_friction_identification.md) | **MAKE** | Real-time tire-road friction identification via ESC-Gradient + Brent |
-| [UC_002_requirements_traceability.md](deliverables/UC_002_requirements_traceability.md) | **MAKE** | GenAI RAG pipeline for ISO 26262 requirements traceability |
-| [UC_003_code_migration_review.md](deliverables/UC_003_code_migration_review.md) | **BUY** | AI-assisted MATLAB→Python migration & code review (Copilot / Tabnine) |
-| [UC_004_synthetic_test_data.md](deliverables/UC_004_synthetic_test_data.md) | **BUY** | Synthetic test data generation for rare road conditions (MOSTLY AI / SageMaker) |
-| [prioritization_matrix.md](deliverables/prioritization_matrix.md) | Matrix | Scoring (Feasibility × Impact × Innovation × Time × IP) + Make vs Buy rationale |
-| [executive_proposal.md](deliverables/executive_proposal.md) | Proposal | Full executive proposal: Parts 1–5, implementation roadmap, aggregate ROI |
-
-**Aggregate impact:** −85% calibration effort | −70% audit prep | −60% code review | −80% test campaign cost | ~6–10× combined ROI
 
 ### Presentation Plots
 
