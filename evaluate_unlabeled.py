@@ -57,12 +57,16 @@ plt.rcParams.update({
     "savefig.dpi": 180, "savefig.bbox": "tight",
 })
 
-# Normalisation bounds for parameter space distance
+# Normalisation bounds for parameter space distance (default fallback)
 _C_RANGES = np.array([
     1.2801 - 0.1946,   # c1 range
     94.129 - 23.990,   # c2 range
     0.5200 - 0.0646,   # c3 range
 ])
+
+# Global reference for learned prototypes
+_LEARNED_PROTOTYPES = None
+_LEARNED_RANGES = None
 
 
 # ---------------------------------------------------------------------------
@@ -107,16 +111,28 @@ def fit_burckhardt(slip: np.ndarray, mu_data: np.ndarray):
 # ---------------------------------------------------------------------------
 # Surface classification — nearest neighbour in normalised parameter space
 # ---------------------------------------------------------------------------
-def classify_surface(params: np.ndarray):
+def classify_surface(params: np.ndarray, prototypes=None, ranges=None):
     """
     Returns (predicted_surface, confidence_dict) where confidence is
     1 - normalised_distance to each surface.
+    
+    Args:
+        params: fitted [c1, c2, c3]
+        prototypes: dict of surface -> [c1, c2, c3] (or None to use learned)
+        ranges: normalization ranges (or None to use learned)
     """
-    params_norm = params / _C_RANGES
+    global _LEARNED_PROTOTYPES, _LEARNED_RANGES
+    
+    if prototypes is None:
+        prototypes = _LEARNED_PROTOTYPES if _LEARNED_PROTOTYPES is not None else C_MATRIX
+    if ranges is None:
+        ranges = _LEARNED_RANGES if _LEARNED_RANGES is not None else _C_RANGES
+    
+    params_norm = params / ranges
 
     distances = {}
-    for name, ref in C_MATRIX.items():
-        ref_norm = ref / _C_RANGES
+    for name, ref in prototypes.items():
+        ref_norm = ref / ranges
         distances[name] = float(np.linalg.norm(params_norm - ref_norm))
 
     sorted_names = sorted(distances, key=distances.get)
@@ -132,6 +148,49 @@ def classify_surface(params: np.ndarray):
     confidence = {k: v / inv_sum for k, v in inv.items()}
 
     return best, confidence, distances
+
+
+# ---------------------------------------------------------------------------
+# Learn prototypes from training data
+# ---------------------------------------------------------------------------
+def learn_prototypes_from_data(df_train: pd.DataFrame):
+    """
+    Fit Burckhardt model to each surface in training data.
+    Returns dict of surface -> [c1, c2, c3] parameters.
+    """
+    global _LEARNED_PROTOTYPES, _LEARNED_RANGES
+    
+    prototypes = {}
+    print("\n[LEARNING PROTOTYPES FROM TRAINING DATA]")
+    
+    for surf in ["Dry asphalt", "Wet asphalt", "Snow"]:
+        grp = df_train[df_train["surface"] == surf]
+        if len(grp) == 0:
+            print(f"  {surf}: NO TRAINING DATA")
+            continue
+        
+        # Fit model to all training samples for this surface
+        params, rmse = fit_burckhardt(grp["slip"].values, grp["mu_noisy"].values)
+        if params is not None:
+            prototypes[surf] = params
+            print(f"  {surf:20s}: c1={params[0]:.4f}  c2={params[1]:.2f}  c3={params[2]:.4f}  (RMSE={rmse:.5f})")
+        else:
+            print(f"  {surf}: FIT FAILED")
+    
+    # Compute normalization ranges from learned prototypes
+    if len(prototypes) == 3:
+        c1_vals = [p[0] for p in prototypes.values()]
+        c2_vals = [p[1] for p in prototypes.values()]
+        c3_vals = [p[2] for p in prototypes.values()]
+        ranges = np.array([
+            max(c1_vals) - min(c1_vals),
+            max(c2_vals) - min(c2_vals),
+            max(c3_vals) - min(c3_vals),
+        ])
+        _LEARNED_RANGES = ranges
+    
+    _LEARNED_PROTOTYPES = prototypes
+    return prototypes
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +253,13 @@ def batch_evaluation(df: pd.DataFrame, n_samples: int, n_batches: int, seed: int
         correct_count = 0
 
         for i in range(n_batches):
-            idx = rng.choice(len(grp), size=n_samples, replace=False)
+            # Handle case where surface has fewer samples than requested
+            sample_size = min(n_samples, len(grp))
+            if sample_size < n_samples // 2:
+                # Skip if surface has too few samples in this set
+                continue
+            
+            idx = rng.choice(len(grp), size=sample_size, replace=False)
             batch = grp.iloc[idx]
             res = identify_batch(
                 batch["slip"].values,
@@ -206,8 +271,12 @@ def batch_evaluation(df: pd.DataFrame, n_samples: int, n_batches: int, seed: int
             if res:
                 results.append(res)
 
-        acc = correct_count / n_batches
-        print(f"\n  {surf:20s}  accuracy = {acc:.0%}  ({correct_count}/{n_batches})")
+        actual_batches = min(n_batches, max(0, len(grp) // n_samples))
+        if actual_batches > 0:
+            acc = correct_count / actual_batches
+            print(f"\n  {surf:20s}  accuracy = {acc:.0%}  ({correct_count}/{actual_batches})")
+        else:
+            print(f"\n  {surf:20s}  [INSUFFICIENT DATA IN THIS SET]")
 
     return results
 
@@ -277,15 +346,26 @@ def plot_results(df: pd.DataFrame, results: list):
         color = COLORS[surf]
         ax_params.scatter(ref[0], ref[1], s=200, color=color,
                           marker="*", zorder=6, label=f"{surf} (true)")
+    
+    # Plot results with markers: o = correct, x = wrong
+    correct_count = 0
+    wrong_count = 0
     for res in results:
-        if res["params"] is not None:
+        if res["params"] is not None and res["correct"] is not None:
             c = COLORS.get(res["true"], "#555")
-            marker = "o" if res["correct"] else "x"
+            if res["correct"]:
+                marker = "o"
+                correct_count += 1
+            else:
+                marker = "x"
+                wrong_count += 1
             ax_params.scatter(res["params"][0], res["params"][1],
-                              s=30, alpha=0.5, color=c, marker=marker, zorder=3)
+                              s=30, alpha=0.6, color=c, marker=marker, zorder=3)
+    
     ax_params.set_xlabel("c1 (amplitude)")
     ax_params.set_ylabel("c2 (sharpness)")
-    ax_params.set_title("Fitted c1 vs c2\n(* = true, o = correct, x = wrong)")
+    title_str = f"Fitted c1 vs c2\n(* = true, o = correct {correct_count}, x = wrong {wrong_count})"
+    ax_params.set_title(title_str)
     ax_params.legend(fontsize=8)
 
     # ── Panel [1,1]: Confusion matrix ─────────────────────────────────────
@@ -343,11 +423,15 @@ def main():
                         help="Points per unlabeled batch")
     parser.add_argument("--n-batches", type=int, default=15,
                         help="Batches per surface")
+    parser.add_argument("--test-only", action="store_true",
+                        help="If set, use hardcoded C_MATRIX (original behavior)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for train/test split")
     args = parser.parse_args()
 
-    print("=" * 60)
-    print("  evaluate_unlabeled.py — Road Surface Identification")
-    print("=" * 60)
+    print("=" * 70)
+    print("  evaluate_unlabeled.py — Road Surface Identification (FIXED)")
+    print("=" * 70)
 
     # Load data
     csv = args.csv
@@ -364,26 +448,84 @@ def main():
         df = df[df["alpha"] > 0.01]
     print(f"  After quality filter: {len(df):,} rows")
     print(f"  Surfaces: {df['surface'].value_counts().to_dict()}")
+    
+    # ── NEW: Split by test_no (simulation ID) to avoid data leakage ────────
+    if not args.test_only:
+        # Try to use test_no column if available
+        if "test_no" in df.columns:
+            unique_runs = df["test_no"].unique()
+            run_col = "test_no"
+        # Otherwise use (scenario, dist_name, mode) as proxy for simulation ID
+        elif all(c in df.columns for c in ["scenario", "dist_name", "mode"]):
+            df["_sim_id"] = df["scenario"].astype(str) + "|" + df["dist_name"].astype(str) + "|" + df["mode"].astype(str)
+            unique_runs = df["_sim_id"].dropna().unique()
+            run_col = "_sim_id"
+        else:
+            print("\n[WARNING] Cannot identify simulations — falling back to row-based split")
+            print("           (Less reliable than simulation-based split)")
+            unique_runs = None
+        
+        if unique_runs is not None:
+            unique_runs = np.array(unique_runs)
+            print(f"\n  Total unique simulations: {len(unique_runs)}")
+            
+            # Split 50/50 by run
+            rng = np.random.default_rng(args.seed)
+            idx = rng.permutation(len(unique_runs))
+            train_idx = idx[:len(unique_runs)//2]
+            test_idx = idx[len(unique_runs)//2:]
+            
+            train_runs = unique_runs[train_idx]
+            test_runs = unique_runs[test_idx]
+            
+            df_train = df[df[run_col].isin(train_runs)].copy()
+            df_test = df[df[run_col].isin(test_runs)].copy()
+            
+            print(f"  Train set: {len(train_runs)} simulations, {len(df_train):,} rows")
+            print(f"  Test set:  {len(test_runs)} simulations, {len(df_test):,} rows")
+            print(f"  No overlap: {len(set(train_runs) & set(test_runs)) == 0}")
+            
+            # Learn prototypes from TRAIN set only
+            learn_prototypes_from_data(df_train)
+            
+            # Use TRAIN set for quick demo
+            print("\n--- Single-batch demo (50 pts, true surface hidden from model) ---")
+            for surf in ["Dry asphalt", "Wet asphalt", "Snow"]:
+                grp = df_train[df_train["surface"] == surf]
+                if len(grp) > 0:
+                    batch = grp.sample(min(50, len(grp)), random_state=args.seed)
+                    identify_batch(batch["slip"].values, batch["mu_noisy"].values,
+                                   true_surface=surf)
+            
+            # Evaluate on TEST set only
+            print("\n--- Full batch evaluation (on HELD-OUT TEST SET) ---")
+            results = batch_evaluation(df_test, args.n_samples, args.n_batches, seed=args.seed)
+            
+            # Use TRAIN set for plotting (to show what model learned)
+            print("\n--- Generating plots (curves from TRAIN set) ---")
+            plot_df = df_train
+        else:
+            # Original behavior: use all data with hardcoded prototypes
+            print("\n[WARNING] --test-only mode: Using hardcoded C_MATRIX (original circular evaluation)")
+            print("--- Single-batch demo (50 pts, true surface hidden from model) ---")
+            for surf in C_MATRIX:
+                grp = df[df["surface"] == surf]
+                batch = grp.sample(50, random_state=42)
+                identify_batch(batch["slip"].values, batch["mu_noisy"].values,
+                               true_surface=surf)
 
-    # ── Quick single-surface demo ─────────────────────────────────────────
-    print("\n--- Single-batch demo (50 pts, true surface hidden from model) ---")
-    for surf in C_MATRIX:
-        grp = df[df["surface"] == surf]
-        batch = grp.sample(50, random_state=42)
-        identify_batch(batch["slip"].values, batch["mu_noisy"].values,
-                       true_surface=surf)
-
-    # ── Full batch evaluation ─────────────────────────────────────────────
-    results = batch_evaluation(df, args.n_samples, args.n_batches)
+            # ── Full batch evaluation ─────────────────────────────────────────────
+            results = batch_evaluation(df, args.n_samples, args.n_batches)
+            plot_df = df
 
     overall_acc = sum(1 for r in results if r["correct"]) / len(results)
-    print(f"\n{'='*60}")
+    print(f"\n{'='*70}")
     print(f"  OVERALL ACCURACY:  {overall_acc:.1%}  "
           f"({sum(1 for r in results if r['correct'])}/{len(results)} batches)")
-    print(f"{'='*60}")
+    print(f"{'='*70}")
 
     # ── Plot ──────────────────────────────────────────────────────────────
-    out = plot_results(df, results)
+    out = plot_results(plot_df, results)
 
     # ── Smoke test ────────────────────────────────────────────────────────
     p = Path(out)
