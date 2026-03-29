@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GripSense Live — Dashboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080b12;--panel:#0d1117;--card:#131720;
+  --border:#ffffff0a;--border2:#ffffff14;
+  --text:#e2e8f0;--muted:#cacaca;--subtle:#6b7280;
+  --green:#22c55e;--green2:#4ade80;
+  --blue:#3b82f6;--blue2:#60a5fa;
+  --purple:#6366f1;--purple2:#818cf8;
+  --snow:#94a3b8;--snow2:#c8d4e0;
+  --amber:#fbbf24;
+}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── TOP BAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border2);flex-shrink:0;gap:12px;}
+.topbar-left{display:flex;align-items:center;gap:10px;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 7px var(--green);animation:pulse 2s infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.topbar-title{font-size:13px;font-weight:700;letter-spacing:-.2px;}
+.topbar-scenario{font-size:10px;color:var(--subtle);font-family:'JetBrains Mono',monospace;}
+.topbar-right{display:flex;align-items:center;gap:8px;}
+.topbar-stat{font-size:10px;color:var(--subtle);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.topbar-stat b{color:var(--snow2);}
+.ctrl-btn{background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif;transition:border-color .15s,color .15s;}
+.ctrl-btn:hover{border-color:var(--purple2);color:var(--text);}
+.ctrl-btn.active{background:var(--purple);border-color:var(--purple);color:#fff;}
+.speed-select{background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--muted);cursor:pointer;font-family:'JetBrains Mono',monospace;outline:none;}
+a.home-link{color:var(--subtle);text-decoration:none;font-size:11px;border:1px solid var(--border2);border-radius:6px;padding:5px 10px;transition:color .15s;}
+a.home-link:hover{color:var(--purple2);}
+
+/* ── LAYOUT ── */
+.main{display:grid;grid-template-columns:240px 1fr 240px;flex:1;min-height:0;overflow:hidden;}
+
+/* ── SIDE PANELS ── */
+.panel{background:var(--panel);display:flex;flex-direction:column;padding:10px;gap:8px;overflow-y:auto;border-right:1px solid var(--border2);}
+.panel.right{border-right:none;border-left:1px solid var(--border2);}
+.panel-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--subtle);padding:2px 0;}
+
+/* surface badge */
+.surf-badge{border-radius:8px;padding:10px 12px;border:1px solid;display:flex;align-items:center;justify-content:space-between;transition:all .3s;}
+.surf-badge.dry{background:#052e1620;border-color:#166534;}
+.surf-badge.wet{background:#0c183880;border-color:#1d4ed8;}
+.surf-badge.snow{background:#1a1d2780;border-color:#475569;}
+.surf-badge.unknown{background:#1a1d2710;border-color:#374151;}
+.sname{font-size:16px;font-weight:700;transition:color .3s;}
+.sname.dry{color:var(--green2);}
+.sname.wet{color:var(--blue2);}
+.sname.snow{color:var(--snow2);}
+.sname.unknown{color:var(--subtle);}
+.true-lbl{font-size:9px;color:var(--subtle);text-align:right;line-height:1.4;}
+
+/* μ bar */
+.mu-lbl{display:flex;justify-content:space-between;font-size:10px;color:var(--subtle);margin-bottom:3px;}
+.mu-lbl b{color:var(--text);font-family:'JetBrains Mono',monospace;}
+.mu-track{height:4px;background:#1e2535;border-radius:2px;}
+.mu-fill{height:100%;border-radius:2px;transition:width .3s;}
+.mu-fill.dry{background:linear-gradient(90deg,#16a34a,var(--green2));}
+.mu-fill.wet{background:linear-gradient(90deg,#1d4ed8,var(--blue2));}
+.mu-fill.snow{background:linear-gradient(90deg,#475569,var(--snow2));}
+.mu-fill.unknown{background:#374151;}
+
+/* params */
+.params-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
+.param-box{background:var(--card);border:1px solid var(--border);border-radius:5px;padding:6px;text-align:center;}
+.pk{font-size:8px;color:var(--subtle);font-family:'JetBrains Mono',monospace;}
+.pv{font-size:12px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--snow2);margin-top:1px;}
+
+/* slip/mu values */
+.val-row{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.val-box{background:var(--card);border:1px solid var(--border);border-radius:5px;padding:7px;text-align:center;}
+.vk{font-size:8px;color:var(--subtle);font-family:'JetBrains Mono',monospace;}
+.vv{font-size:14px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--text);margin-top:1px;transition:color .3s;}
+
+/* sparkline */
+.spark-box{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:7px;}
+.spark-title{font-size:8px;color:var(--subtle);margin-bottom:4px;display:flex;justify-content:space-between;}
+.spark-title span{color:var(--green2);font-family:'JetBrains Mono',monospace;font-size:9px;}
+
+/* buffer ring */
+.buf-row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:7px 9px;}
+.buf-svg{flex-shrink:0;}
+.buf-info{flex:1;}
+.buf-lbl{font-size:8px;color:var(--subtle);}
+.buf-val{font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--text);}
+
+/* ── CENTER ── */
+.center{background:var(--bg);display:flex;flex-direction:column;overflow:hidden;}
+.progress-bar-wrap{height:3px;background:#0d1117;flex-shrink:0;}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--purple),var(--blue2));width:0%;transition:width .1s linear;}
+
+/* three.js canvas */
+#three-canvas{flex:1 1 0;min-height:0;display:block;width:100%;}
+
+/* classification status row */
+.status-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;flex-shrink:0;border-top:1px solid var(--border2);}
+.sstat{padding:7px 10px;text-align:center;border-right:1px solid var(--border);}
+.sstat:last-child{border-right:none;}
+.sstat-val{font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.sstat-key{font-size:7px;color:var(--subtle);letter-spacing:1px;text-transform:uppercase;margin-top:1px;}
+
+/* ── CLEAN / NOISY card tags ── */
+.card-tag{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;border-radius:4px;padding:2px 6px;}
+.card-tag.clean{color:var(--subtle);background:var(--card);border:1px solid var(--border2);}
+.card-tag.noisy{color:var(--purple2);background:#1e0a38;border:1px solid #5b21b6;}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+.clean-section{border-radius:8px;border:1px solid var(--border2);padding:8px;display:flex;flex-direction:column;gap:6px;}
+/* ── NOISY card ── */
+.noisy-card{border-radius:8px;border:1px solid #5b21b680;background:#1e0a3810;padding:8px;display:flex;flex-direction:column;gap:5px;}
+.sigma-row{display:flex;gap:8px;font-size:9px;color:var(--subtle);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.sigma-val{color:var(--purple2);}
+/* ── NOISE PANEL ── */
+.noise-panel{background:var(--panel);padding:10px 14px;flex-shrink:0;border-top:1px solid var(--border2);}
+.noise-panel-title{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--purple2);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.noise-dot{width:5px;height:5px;border-radius:50%;background:var(--purple2);box-shadow:0 0 5px var(--purple2);animation:pulse 1.5s infinite;}
+.noise-sliders{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px;}
+.noise-slider-group label{display:flex;justify-content:space-between;font-size:10px;color:var(--subtle);margin-bottom:4px;}
+.noise-slider-group label span{font-family:'JetBrains Mono',monospace;color:var(--purple2);font-weight:600;}
+.noise-slider-group input[type=range]{width:100%;accent-color:var(--purple2);cursor:pointer;}
+.noise-f1-row{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--subtle);}
+.noise-f1-val{font-family:'JetBrains Mono',monospace;color:var(--amber);font-weight:600;font-size:12px;}
+.noise-f1-track{flex:1;height:3px;background:#1e2535;border-radius:2px;}
+.noise-f1-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--amber),#fde68a);transition:width .3s;}
+.noise-off-badge{font-size:10px;color:var(--subtle);font-family:'JetBrains Mono',monospace;background:var(--card);border:1px solid var(--border2);border-radius:4px;padding:2px 8px;}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="live-dot"></div>
+    <span class="topbar-title">GripSense Live</span>
+    <span class="topbar-scenario" id="scenario-lbl">Loading…</span>
+  </div>
+  <div class="topbar-right">
+    <span class="topbar-stat">Frame <b id="frame-num">0</b> / <b id="frame-total">—</b></span>
+    <select class="speed-select" id="speed-select" onchange="setSpeed(this.value)">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="5">5×</option>
+      <option value="10">10×</option>
+    </select>
+    <button class="ctrl-btn" id="pause-btn" onclick="togglePause()">⏸ Pause</button>
+    <button class="ctrl-btn" onclick="resetStream()">↺ Reset</button>
+    <a class="home-link" href="/">← Intro</a>
+  </div>
+</div>
+
+<!-- PROGRESS BAR -->
+<div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT PANEL (FL wheel) -->
+  <div class="panel" id="panel-left">
+    <div class="panel-label">Front-Left Wheel — FL</div>
+
+    <!-- CLEAN -->
+    <div class="clean-section">
+      <div class="card-header">
+        <span class="card-tag clean">CLEAN</span>
+        <span style="font-size:9px;color:var(--subtle)"><span id="buf-left">0</span> / 50</span>
+      </div>
+      <div class="surf-badge unknown" id="badge-left">
+        <div class="sname unknown" id="surf-left">Warming up…</div>
+        <div class="true-lbl">True:<br><span id="true-left">—</span></div>
+      </div>
+      <div>
+        <div class="mu-lbl"><span>μ_peak</span><b id="mupeak-left">—</b></div>
+        <div class="mu-track"><div class="mu-fill unknown" id="mubar-left" style="width:0%"></div></div>
+      </div>
+      <div class="val-row">
+        <div class="val-box"><div class="vk">slip</div><div class="vv" id="slip-left">—</div></div>
+        <div class="val-box"><div class="vk">μ now</div><div class="vv" id="mu-left">—</div></div>
+      </div>
+      <div class="params-grid">
+        <div class="param-box"><div class="pk">c₁</div><div class="pv" id="c1-left">—</div></div>
+        <div class="param-box"><div class="pk">c₂</div><div class="pv" id="c2-left">—</div></div>
+        <div class="param-box"><div class="pk">c₃</div><div class="pv" id="c3-left">—</div></div>
+      </div>
+      <div class="spark-box">
+        <div class="spark-title"><span>μ(t) history</span><span id="spark-cur-left">—</span></div>
+        <svg width="100%" height="40" viewBox="0 0 220 40" id="spark-left"></svg>
+      </div>
+      <div class="buf-row">
+        <svg class="buf-svg" width="36" height="36" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="14" fill="none" stroke="#1e2535" stroke-width="4"/>
+          <circle cx="18" cy="18" r="14" fill="none" stroke="#22c55e" stroke-width="4"
+                  stroke-dasharray="87.96" stroke-dashoffset="87.96"
+                  stroke-linecap="round" transform="rotate(-90 18 18)"
+                  id="ring-left" style="transition:stroke-dashoffset .3s"/>
+        </svg>
+        <div class="buf-info">
+          <div class="buf-lbl">Window buffer</div>
+          <div class="buf-val"><span id="ring-count-left">0</span> / 50</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOISY -->
+    <div class="noisy-card">
+      <div class="card-header">
+        <span class="card-tag noisy">⚡ NOISY</span>
+        <span style="font-size:9px;color:var(--subtle)"><span id="nbuf-left">0</span> / 50</span>
+      </div>
+      <div class="surf-badge unknown" id="nbadge-left">
+        <div class="sname unknown" id="nsurf-left">Warming up…</div>
+      </div>
+      <div>
+        <div class="mu-lbl"><span>μ_peak</span><b id="nmupeak-left">—</b></div>
+        <div class="mu-track"><div class="mu-fill unknown" id="nmubar-left" style="width:0%"></div></div>
+      </div>
+      <div class="val-row">
+        <div class="val-box"><div class="vk">slip + σ_s</div><div class="vv" id="nslip-left">—</div></div>
+        <div class="val-box"><div class="vk">μ + σ_μ</div><div class="vv" id="nmu-left">—</div></div>
+      </div>
+      <div class="params-grid">
+        <div class="param-box"><div class="pk">c₁</div><div class="pv" id="nc1-left">—</div></div>
+        <div class="param-box"><div class="pk">c₂</div><div class="pv" id="nc2-left">—</div></div>
+        <div class="param-box"><div class="pk">c₃</div><div class="pv" id="nc3-left">—</div></div>
+      </div>
+      <div class="sigma-row">
+        σ_μ=<span class="sigma-val" id="smu-left">0.010</span>
+        &nbsp;&nbsp;σ_s=<span class="sigma-val" id="ss-left">0.002</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center">
+    <canvas id="three-canvas"></canvas>
+
+    <!-- NOISE PANEL -->
+    <div class="noise-panel">
+      <div class="noise-panel-title">
+        <div class="noise-dot"></div>
+        SENSOR NOISE INJECTION
+      </div>
+      <div class="noise-sliders">
+        <div class="noise-slider-group">
+          <label>σ_μ — friction noise <span id="sigma-mu-lbl">0.010</span></label>
+          <input type="range" id="sigma-mu-slider" min="0" max="0.10" step="0.001" value="0.010">
+        </div>
+        <div class="noise-slider-group">
+          <label>σ_s — slip noise <span id="sigma-s-lbl">0.002</span></label>
+          <input type="range" id="sigma-s-slider" min="0" max="0.020" step="0.0002" value="0.002">
+        </div>
+      </div>
+      <div class="noise-f1-row">
+        <span id="noise-off-badge" class="noise-off-badge" style="display:none">NOISE OFF</span>
+        <span id="noise-f1-group" style="display:flex;align-items:center;gap:8px;width:100%">
+          <span>Expected F1:</span>
+          <span class="noise-f1-val" id="noise-f1-val">0.724</span>
+          <div class="noise-f1-track"><div class="noise-f1-fill" id="noise-f1-fill" style="width:72.4%"></div></div>
+          <span style="font-size:9px;color:var(--subtle)" id="noise-f1-label">@ σ_μ=0.010</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="status-row">
+      <div class="sstat"><div class="sstat-val" id="stat-total">0</div><div class="sstat-key">Classifications</div></div>
+      <div class="sstat"><div class="sstat-val" id="stat-mu-l">—</div><div class="sstat-key">Avg μ Left</div></div>
+      <div class="sstat"><div class="sstat-val" id="stat-mu-r">—</div><div class="sstat-key">Avg μ Right</div></div>
+      <div class="sstat"><div class="sstat-val" id="stat-changes">0</div><div class="sstat-key">Surface Changes</div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL (RL wheel) -->
+  <div class="panel right" id="panel-right">
+    <div class="panel-label">Rear-Left Wheel — RL</div>
+
+    <!-- CLEAN -->
+    <div class="clean-section">
+      <div class="card-header">
+        <span class="card-tag clean">CLEAN</span>
+        <span style="font-size:9px;color:var(--subtle)"><span id="buf-right">0</span> / 50</span>
+      </div>
+      <div class="surf-badge unknown" id="badge-right">
+        <div class="sname unknown" id="surf-right">Warming up…</div>
+        <div class="true-lbl">True:<br><span id="true-right">—</span></div>
+      </div>
+      <div>
+        <div class="mu-lbl"><span>μ_peak</span><b id="mupeak-right">—</b></div>
+        <div class="mu-track"><div class="mu-fill unknown" id="mubar-right" style="width:0%"></div></div>
+      </div>
+      <div class="val-row">
+        <div class="val-box"><div class="vk">slip</div><div class="vv" id="slip-right">—</div></div>
+        <div class="val-box"><div class="vk">μ now</div><div class="vv" id="mu-right">—</div></div>
+      </div>
+      <div class="params-grid">
+        <div class="param-box"><div class="pk">c₁</div><div class="pv" id="c1-right">—</div></div>
+        <div class="param-box"><div class="pk">c₂</div><div class="pv" id="c2-right">—</div></div>
+        <div class="param-box"><div class="pk">c₃</div><div class="pv" id="c3-right">—</div></div>
+      </div>
+      <div class="spark-box">
+        <div class="spark-title"><span>μ(t) history</span><span id="spark-cur-right">—</span></div>
+        <svg width="100%" height="40" viewBox="0 0 220 40" id="spark-right"></svg>
+      </div>
+      <div class="buf-row">
+        <svg class="buf-svg" width="36" height="36" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="14" fill="none" stroke="#1e2535" stroke-width="4"/>
+          <circle cx="18" cy="18" r="14" fill="none" stroke="#3b82f6" stroke-width="4"
+                  stroke-dasharray="87.96" stroke-dashoffset="87.96"
+                  stroke-linecap="round" transform="rotate(-90 18 18)"
+                  id="ring-right" style="transition:stroke-dashoffset .3s"/>
+        </svg>
+        <div class="buf-info">
+          <div class="buf-lbl">Window buffer</div>
+          <div class="buf-val"><span id="ring-count-right">0</span> / 50</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOISY -->
+    <div class="noisy-card">
+      <div class="card-header">
+        <span class="card-tag noisy">⚡ NOISY</span>
+        <span style="font-size:9px;color:var(--subtle)"><span id="nbuf-right">0</span> / 50</span>
+      </div>
+      <div class="surf-badge unknown" id="nbadge-right">
+        <div class="sname unknown" id="nsurf-right">Warming up…</div>
+      </div>
+      <div>
+        <div class="mu-lbl"><span>μ_peak</span><b id="nmupeak-right">—</b></div>
+        <div class="mu-track"><div class="mu-fill unknown" id="nmubar-right" style="width:0%"></div></div>
+      </div>
+      <div class="val-row">
+        <div class="val-box"><div class="vk">slip + σ_s</div><div class="vv" id="nslip-right">—</div></div>
+        <div class="val-box"><div class="vk">μ + σ_μ</div><div class="vv" id="nmu-right">—</div></div>
+      </div>
+      <div class="params-grid">
+        <div class="param-box"><div class="pk">c₁</div><div class="pv" id="nc1-right">—</div></div>
+        <div class="param-box"><div class="pk">c₂</div><div class="pv" id="nc2-right">—</div></div>
+        <div class="param-box"><div class="pk">c₃</div><div class="pv" id="nc3-right">—</div></div>
+      </div>
+      <div class="sigma-row">
+        σ_μ=<span class="sigma-val" id="smu-right">0.010</span>
+        &nbsp;&nbsp;σ_s=<span class="sigma-val" id="ss-right">0.002</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ── Noise state ──────────────────────────────────────────────────────────
+let sigmaMu = 0.010;
+let sigmaS  = 0.002;
+
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+const F1_TABLE = [[0.000,1.000],[0.010,0.724],[0.050,0.528],[0.100,0.436]];
+function expectedF1(sigma) {
+  if (sigma <= 0) return 1.0;
+  for (let i = 1; i < F1_TABLE.length; i++) {
+    const [x0,y0] = F1_TABLE[i-1], [x1,y1] = F1_TABLE[i];
+    if (sigma <= x1) return y0 + (sigma - x0) / (x1 - x0) * (y1 - y0);
+  }
+  return F1_TABLE[F1_TABLE.length - 1][1];
+}
+
+const noisyBuf = {
+  left:  {slips:[], mus:[], count:0, fetching:false},
+  right: {slips:[], mus:[], count:0, fetching:false},
+};
+
+// ── Three.js scene ────────────────────────────────────────────────────────
+(function(){
+  const canvas = document.getElementById('three-canvas');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x07090e);
+  scene.fog = new THREE.Fog(0x07090e, 11, 22);
+
+  // Perspective camera — slightly elevated & behind for depth
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+  camera.position.set(0, -3.8, 7.5);
+  camera.lookAt(0, 0.6, 0);
+
+  function resize(){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ── Lights ────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0x14192e, 4.0));
+  const keyLight = new THREE.DirectionalLight(0xb8ccf0, 3.2);
+  keyLight.position.set(2, -1, 9);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(512, 512);
+  keyLight.shadow.camera.left = -4; keyLight.shadow.camera.right  =  4;
+  keyLight.shadow.camera.top  =  7; keyLight.shadow.camera.bottom = -7;
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0x182848, 1.4);
+  fillLight.position.set(-4, 3, 5);
+  scene.add(fillLight);
+  const rimLight = new THREE.DirectionalLight(0x2a3c60, 0.7);
+  rimLight.position.set(0, 5, 2);
+  scene.add(rimLight);
+
+  // ── Road ──────────────────────────────────────────────────
+  const roadMat = new THREE.MeshPhongMaterial({color:0x0a0d13, specular:0x12192a, shininess:14});
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(8, 28), roadMat);
+  road.receiveShadow = true;
+  scene.add(road);
+
+  // Left / right road surface tint overlays
+  const roadTintL = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.8, 28),
+    new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0, depthWrite:false})
+  );
+  roadTintL.position.set(-1.9, 0, 0.001); scene.add(roadTintL);
+  const roadTintR = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.8, 28),
+    new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0, depthWrite:false})
+  );
+  roadTintR.position.set(1.9, 0, 0.001); scene.add(roadTintR);
+
+  // Edge lines
+  [-3.7, 3.7].forEach(x => {
+    const e = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 28),
+      new THREE.MeshBasicMaterial({color:0x354258}));
+    e.position.set(x, 0, 0.002); scene.add(e);
+  });
+
+  // Center dashes (animated)
+  const DASH_COUNT = 18;
+  const dashMat = new THREE.MeshBasicMaterial({color:0x3a4860});
+  const dashes = [];
+  for (let i = 0; i < DASH_COUNT; i++){
+    const d = new THREE.Mesh(new THREE.PlaneGeometry(0.065, 0.85), dashMat);
+    d.position.set(0, (i / DASH_COUNT) * 28 - 14, 0.002);
+    scene.add(d); dashes.push(d);
+  }
+
+  // ── Car ───────────────────────────────────────────────────
+  const carGroup = new THREE.Group();
+  carGroup.position.z = 0.04;
+  scene.add(carGroup);
+
+  const matBody  = new THREE.MeshPhongMaterial({color:0x181b26, specular:0x364466, shininess:70});
+  const matCabin = new THREE.MeshPhongMaterial({color:0x0c0e14, specular:0x243050, shininess:45});
+  const matGlass = new THREE.MeshPhongMaterial({color:0x0c1830, specular:0x3d7cc0, shininess:200, transparent:true, opacity:0.93});
+  const matChrome= new THREE.MeshPhongMaterial({color:0x6a7e92, specular:0xb4c8d8, shininess:260});
+  const matHL    = new THREE.MeshPhongMaterial({color:0xddeeff, emissive:0x5577bb, emissiveIntensity:1.5, specular:0xffffff, shininess:300});
+  const matTL    = new THREE.MeshPhongMaterial({color:0xff1a2c, emissive:0xcc0f1e, emissiveIntensity:1.0, transparent:true, opacity:0.95});
+  const matSill  = new THREE.MeshPhongMaterial({color:0x0f1118, specular:0x161e2c, shininess:8});
+
+  // Ground shadow
+  const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 3.3),
+    new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.50, depthWrite:false}));
+  shadowPlane.position.set(0.06, -0.04, 0.0005); scene.add(shadowPlane);
+
+  // Sill / lower body (widest)
+  const sill = new THREE.Mesh(new THREE.BoxGeometry(1.46, 3.08, 0.05), matSill);
+  carGroup.add(sill);
+
+  // Main body
+  const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(1.34, 2.88, 0.11), matBody);
+  bodyMesh.position.z = 0.08; bodyMesh.castShadow = true;
+  carGroup.add(bodyMesh);
+
+  // Cabin / roof
+  const cabinMesh = new THREE.Mesh(new THREE.BoxGeometry(1.04, 1.46, 0.22), matCabin);
+  cabinMesh.position.set(0, -0.12, 0.20); cabinMesh.castShadow = true;
+  carGroup.add(cabinMesh);
+
+  // Windshield
+  const ws = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.36), matGlass);
+  ws.position.set(0, 0.54, 0.34); carGroup.add(ws);
+
+  // Rear window
+  const rw = new THREE.Mesh(new THREE.PlaneGeometry(0.88, 0.30), matGlass);
+  rw.position.set(0, -0.70, 0.34); carGroup.add(rw);
+
+  // Front grille chrome strip
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(0.80, 0.055, 0.04), matChrome);
+  grille.position.set(0, 1.455, 0.12); carGroup.add(grille);
+
+  // Front splitter (lower lip)
+  const splitter = new THREE.Mesh(new THREE.BoxGeometry(1.20, 0.06, 0.025), matChrome);
+  splitter.position.set(0, 1.50, 0.01); carGroup.add(splitter);
+
+  // Headlights — slim L-shaped LED strips
+  [[-0.52, 1.36], [0.52, 1.36]].forEach(([x, y]) => {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.055, 0.03), matHL);
+    hl.position.set(x, y, 0.16); carGroup.add(hl);
+  });
+  // DRL center strip
+  const drl = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.022, 0.025), matHL);
+  drl.position.set(0, 1.44, 0.16); carGroup.add(drl);
+
+  // Taillights — full-width strip
+  const tl = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.065, 0.03), matTL);
+  tl.position.set(0, -1.475, 0.13); carGroup.add(tl);
+
+  // B-pillar chrome accents
+  [-0.52, 0.52].forEach(x => {
+    const bp = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.48, 0.02), matChrome);
+    bp.position.set(x, -0.06, 0.32); carGroup.add(bp);
+  });
+
+  // Door crease highlight line
+  [-0.66, 0.66].forEach(x => {
+    const crease = new THREE.Mesh(new THREE.BoxGeometry(0.008, 2.20, 0.005),
+      new THREE.MeshPhongMaterial({color:0x2a3550, specular:0x7090b8, shininess:180}));
+    crease.position.set(x, 0, 0.14); carGroup.add(crease);
+  });
+
+  // ── Wheels ────────────────────────────────────────────────
+  const WHEEL_COLORS = {
+    'Dry asphalt': 0x22c55e,
+    'Wet asphalt': 0x3b82f6,
+    'Snow':        0x94a3b8,
+    'unknown':     0x252d3d,
+  };
+  const ROAD_TINTS = {
+    'Dry asphalt': {color:0x16300f, opacity:0.11},
+    'Wet asphalt': {color:0x0c1e40, opacity:0.14},
+    'Snow':        {color:0x1c2540, opacity:0.18},
+    'unknown':     {color:0x000000, opacity:0.00},
+  };
+  const matTire = new THREE.MeshPhongMaterial({color:0x080b10, specular:0x181820, shininess:6});
+  const matRim  = new THREE.MeshPhongMaterial({color:0x98aabb, specular:0xd4e4f0, shininess:200});
+  const matHub  = new THREE.MeshPhongMaterial({color:0x6a7a8c, specular:0xc8dcea, shininess:280});
+  const glowMeshes = [];
+
+  const wPos = [[-0.85, 0.98,'left'], [0.85, 0.98,'right'], [-0.85, -0.98,'left'], [0.85, -0.98,'right']];
+  wPos.forEach(([wx, wy, side]) => {
+    const wg = new THREE.Group();
+    wg.position.set(wx, wy, 0.08); scene.add(wg);
+
+    // Outer tire ring
+    wg.add(new THREE.Mesh(new THREE.RingGeometry(0.150, 0.215, 28), matTire));
+    // Inner fill (dark rubber)
+    wg.add(new THREE.Mesh(new THREE.CircleGeometry(0.150, 28),
+      new THREE.MeshPhongMaterial({color:0x060810, shininess:2})));
+    // Rim disc
+    const rimDisc = new THREE.Mesh(new THREE.CircleGeometry(0.150, 28), matRim);
+    rimDisc.position.z = 0.012; wg.add(rimDisc);
+    // 5-spoke design
+    for (let s = 0; s < 5; s++){
+      const ang = (s / 5) * Math.PI * 2;
+      const spoke = new THREE.Mesh(new THREE.PlaneGeometry(0.024, 0.110), matRim);
+      spoke.rotation.z = ang;
+      spoke.position.set(Math.sin(ang)*0.052, Math.cos(ang)*0.052, 0.018);
+      wg.add(spoke);
+    }
+    // Hub cap
+    const hub = new THREE.Mesh(new THREE.CircleGeometry(0.038, 16), matHub);
+    hub.position.z = 0.022; wg.add(hub);
+    // Centre bolt
+    wg.add(Object.assign(new THREE.Mesh(new THREE.CircleGeometry(0.012, 8),
+      new THREE.MeshPhongMaterial({color:0x303840, specular:0x8899aa, shininess:400})),
+      {position: new THREE.Vector3(0,0,0.026)}));
+    // Glow ring (surface indicator)
+    const glow = new THREE.Mesh(new THREE.RingGeometry(0.222, 0.260, 28),
+      new THREE.MeshBasicMaterial({color:0x252d3d, transparent:true, opacity:0.75, depthWrite:false}));
+    glow.position.z = -0.004; wg.add(glow);
+    glowMeshes.push({mesh:glow, side});
+  });
+
+  // ── Ambient dust particles ─────────────────────────────────
+  const NUM_P = 70;
+  const pBuf = new Float32Array(NUM_P * 3);
+  for (let i = 0; i < NUM_P; i++){
+    pBuf[i*3]   = (Math.random()-0.5) * 8;
+    pBuf[i*3+1] = (Math.random()-0.5) * 15;
+    pBuf[i*3+2] = Math.random() * 0.08;
+  }
+  const pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pBuf, 3));
+  scene.add(new THREE.Points(pGeo,
+    new THREE.PointsMaterial({size:0.022, color:0x253048, transparent:true, opacity:0.55})));
+
+  // ── Animation state ───────────────────────────────────────
+  let leftSurface = 'unknown', rightSurface = 'unknown';
+  let dashOffset = 0, t = 0;
+
+  window._setSceneSurfaces = function(l, r){
+    leftSurface  = l || 'unknown';
+    rightSurface = r || 'unknown';
+  };
+
+  function animate(){
+    requestAnimationFrame(animate);
+    t += 0.016;
+
+    // Scroll road dashes
+    dashOffset = (dashOffset + 0.055) % (28 / DASH_COUNT);
+    dashes.forEach((d, i) => {
+      d.position.y = ((i / DASH_COUNT) * 28 - 14 - dashOffset + 28) % 28 - 14;
+    });
+
+    // Road surface tinting
+    const lt = ROAD_TINTS[leftSurface]  || ROAD_TINTS['unknown'];
+    const rt = ROAD_TINTS[rightSurface] || ROAD_TINTS['unknown'];
+    roadTintL.material.color.setHex(lt.color); roadTintL.material.opacity = lt.opacity;
+    roadTintR.material.color.setHex(rt.color); roadTintR.material.opacity = rt.opacity;
+
+    // Wheel glow pulse
+    glowMeshes.forEach(({mesh, side}, i) => {
+      const surf = side === 'left' ? leftSurface : rightSurface;
+      mesh.material.color.setHex(WHEEL_COLORS[surf] || WHEEL_COLORS['unknown']);
+      mesh.material.opacity = 0.52 + Math.sin(t * 1.7 + i * 0.9) * 0.22;
+    });
+
+    // Subtle car float
+    carGroup.position.z = 0.04 + Math.sin(t * 0.42) * 0.003;
+
+    // Particle drift
+    const pp = pGeo.attributes.position.array;
+    for (let i = 0; i < NUM_P; i++){
+      pp[i*3+1] -= 0.020;
+      if (pp[i*3+1] < -14) pp[i*3+1] = 14;
+    }
+    pGeo.attributes.position.needsUpdate = true;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+// ── Sparkline helper ────────────────────────────────────────────────────────
+const sparkHistory = {left: [], right: []};
+const MAX_SPARK = 80;
+
+function updateSpark(side, mu) {
+  sparkHistory[side].push(mu);
+  if(sparkHistory[side].length > MAX_SPARK) sparkHistory[side].shift();
+  const arr = sparkHistory[side];
+  if(arr.length < 2) return;
+  const svg = document.getElementById('spark-' + side);
+  const minV = Math.min(...arr), maxV = Math.max(...arr);
+  const range = Math.max(maxV - minV, 0.05);
+  const pts = arr.map((v, i) => {
+    const x = (i / (MAX_SPARK - 1)) * 220;
+    const y = 38 - ((v - minV) / range) * 34;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const color = {'Dry asphalt':'#22c55e','Wet asphalt':'#3b82f6','Snow':'#94a3b8'}[
+    document.getElementById('surf-'+side).textContent] || '#6366f1';
+  svg.innerHTML = `<polyline fill="none" stroke="${color}" stroke-width="1.5" opacity=".8" points="${pts}"/>`;
+  document.getElementById('spark-cur-' + side).textContent = mu.toFixed(3);
+}
+
+// ── Panel update ────────────────────────────────────────────────────────────
+const SURF_CLS = {'Dry asphalt':'dry','Wet asphalt':'wet','Snow':'snow'};
+let classCount = 0, leftPrevSurf = '', rightPrevSurf = '', surfChanges = 0;
+let muAccL = [], muAccR = [];
+
+function updatePanel(side, d, trueSurf) {
+  const cls  = SURF_CLS[d.surface] || 'unknown';
+  const fill = d.mu_peak > 0 ? Math.min(d.mu_peak / 1.3 * 100, 100).toFixed(1) + '%' : '0%';
+
+  document.getElementById('badge-'  + side).className = 'surf-badge ' + cls;
+  document.getElementById('surf-'   + side).className = 'sname ' + cls;
+  document.getElementById('surf-'   + side).textContent = d.surface === '—' ? 'Warming up…' : d.surface;
+  document.getElementById('true-'   + side).textContent = trueSurf || '—';
+  document.getElementById('slip-'   + side).textContent = d.slip.toFixed(4);
+  document.getElementById('mu-'     + side).textContent = d.mu.toFixed(4);
+  document.getElementById('mupeak-' + side).textContent = d.mu_peak > 0 ? d.mu_peak.toFixed(3) : '—';
+  document.getElementById('mubar-'  + side).className   = 'mu-fill ' + cls;
+  document.getElementById('mubar-'  + side).style.width = fill;
+  document.getElementById('c1-'     + side).textContent = d.c1 > 0 ? d.c1.toFixed(3) : '—';
+  document.getElementById('c2-'     + side).textContent = d.c2 > 0 ? d.c2.toFixed(2) : '—';
+  document.getElementById('c3-'     + side).textContent = d.c3 > 0 ? d.c3.toFixed(3) : '—';
+  document.getElementById('buf-'         + side).textContent = d.buffer_fill;
+  document.getElementById('ring-count-'  + side).textContent = d.buffer_fill;
+
+  // Buffer ring
+  const ringEl = document.getElementById('ring-' + side);
+  const pct = d.buffer_fill / 50;
+  ringEl.setAttribute('stroke-dashoffset', (87.96 * (1 - pct)).toFixed(2));
+
+  updateSpark(side, d.mu);
+}
+
+function updateStats(d) {
+  muAccL.push(d.left.mu);
+  muAccR.push(d.right.mu);
+  if(muAccL.length > 200){ muAccL.shift(); muAccR.shift(); }
+
+  if(d.left.surface !== '—' && d.right.surface !== '—') classCount++;
+
+  if(d.left.surface !== '—' && d.left.surface !== leftPrevSurf){
+    if(leftPrevSurf) surfChanges++;
+    leftPrevSurf = d.left.surface;
+  }
+  if(d.right.surface !== '—' && d.right.surface !== rightPrevSurf){
+    if(rightPrevSurf) surfChanges++;
+    rightPrevSurf = d.right.surface;
+  }
+
+  const avgL = muAccL.reduce((a,b)=>a+b,0)/muAccL.length;
+  const avgR = muAccR.reduce((a,b)=>a+b,0)/muAccR.length;
+
+  document.getElementById('stat-total').textContent = classCount;
+  document.getElementById('stat-mu-l').textContent  = avgL.toFixed(3);
+  document.getElementById('stat-mu-r').textContent  = avgR.toFixed(3);
+  document.getElementById('stat-changes').textContent = surfChanges;
+}
+
+// ── Noisy panel logic ────────────────────────────────────────────────────────
+function updateNoisyPanel(side, d) {
+  const el = id => document.getElementById(id + '-' + side);
+  const cls  = SURF_CLS[d.surface] || 'unknown';
+  const fill = d.mu_peak > 0 ? Math.min(d.mu_peak / 1.3 * 100, 100).toFixed(1) + '%' : '0%';
+  el('nbadge').className    = 'surf-badge ' + cls;
+  el('nsurf').className     = 'sname ' + cls;
+  el('nsurf').textContent   = d.surface;
+  el('nmupeak').textContent = d.mu_peak > 0 ? d.mu_peak.toFixed(3) : '—';
+  el('nmubar').className    = 'mu-fill ' + cls;
+  el('nmubar').style.width  = fill;
+  el('nc1').textContent     = d.c1 > 0 ? d.c1.toFixed(3) : '—';
+  el('nc2').textContent     = d.c2 > 0 ? d.c2.toFixed(2) : '—';
+  el('nc3').textContent     = d.c3 > 0 ? d.c3.toFixed(3) : '—';
+}
+
+function classifyNoisy(side, slips, mus) {
+  noisyBuf[side].fetching = true;
+  fetch('/api/classify', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({slips, mus}),
+  })
+  .then(r => r.json())
+  .then(d => { noisyBuf[side].fetching = false; if (d.surface) updateNoisyPanel(side, d); })
+  .catch(() => { noisyBuf[side].fetching = false; });
+}
+
+function pushNoisy(side, slip, mu) {
+  const buf = noisyBuf[side];
+  const ns = Math.max(0, slip  + sigmaS  * randn());
+  const nm = Math.max(0, mu    + sigmaMu * randn());
+  buf.slips.push(ns); buf.mus.push(nm);
+  if (buf.slips.length > 50) { buf.slips.shift(); buf.mus.shift(); }
+  buf.count++;
+
+  document.getElementById('nslip-' + side).textContent = ns.toFixed(4);
+  document.getElementById('nmu-'   + side).textContent = nm.toFixed(4);
+  document.getElementById('nbuf-'  + side).textContent = buf.slips.length;
+
+  if (buf.count % 50 === 0 && buf.slips.length === 50 && !buf.fetching) {
+    classifyNoisy(side, [...buf.slips], [...buf.mus]);
+  }
+}
+
+// ── SSE ─────────────────────────────────────────────────────────────────────
+let paused = false;
+const es = new EventSource('/stream');
+
+es.onmessage = function(e){
+  const d = JSON.parse(e.data);
+  if(d.paused) return;
+
+  updatePanel('left',  d.left,  d.left_true);
+  updatePanel('right', d.right, d.right_true);
+  updateStats(d);
+  pushNoisy('left',  d.left.slip,  d.left.mu);
+  pushNoisy('right', d.right.slip, d.right.mu);
+
+  window._setSceneSurfaces(d.left.surface, d.right.surface);
+
+  document.getElementById('scenario-lbl').textContent =
+    `Sim ${d.test_no}-${d.case_no} · ${d.left_true || '—'}`;
+  document.getElementById('frame-num').textContent   = d.row;
+  document.getElementById('frame-total').textContent = d.total;
+
+  const pct = d.total > 0 ? (d.row / d.total * 100).toFixed(2) : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+};
+
+es.onerror = function(){
+  document.getElementById('scenario-lbl').textContent = 'Connection lost — reload page';
+};
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+function setSpeed(v){
+  fetch('/api/speed', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:parseFloat(v)})});
+}
+function togglePause(){
+  fetch('/api/pause', {method:'POST'}).then(r=>r.json()).then(d=>{
+    paused = d.paused;
+    document.getElementById('pause-btn').textContent = paused ? '▶ Resume' : '⏸ Pause';
+    document.getElementById('pause-btn').classList.toggle('active', paused);
+  });
+}
+function resetStream(){
+  fetch('/api/reset', {method:'POST'});
+  sparkHistory.left = []; sparkHistory.right = [];
+  muAccL = []; muAccR = [];
+  classCount = 0; surfChanges = 0;
+  leftPrevSurf = ''; rightPrevSurf = '';
+  noisyBuf.left  = {slips:[], mus:[], count:0, fetching:false};
+  noisyBuf.right = {slips:[], mus:[], count:0, fetching:false};
+}
+
+// ── Noise slider wiring ──────────────────────────────────────────────────
+function updateNoiseDisplay() {
+  const isOff = sigmaMu === 0 && sigmaS === 0;
+  document.getElementById('sigma-mu-lbl').textContent = sigmaMu.toFixed(3);
+  document.getElementById('sigma-s-lbl').textContent  = sigmaS.toFixed(3);
+  ['left','right'].forEach(s => {
+    const m  = document.getElementById('smu-' + s);
+    const sl = document.getElementById('ss-'  + s);
+    if (m)  m.textContent  = sigmaMu.toFixed(3);
+    if (sl) sl.textContent = sigmaS.toFixed(3);
+  });
+  document.getElementById('noise-off-badge').style.display = isOff ? '' : 'none';
+  document.getElementById('noise-f1-group').style.display  = isOff ? 'none' : 'flex';
+  if (!isOff) {
+    const f1 = expectedF1(sigmaMu);
+    document.getElementById('noise-f1-val').textContent   = f1.toFixed(3);
+    document.getElementById('noise-f1-fill').style.width  = (f1 * 100).toFixed(1) + '%';
+    document.getElementById('noise-f1-label').textContent = '@ σ_μ=' + sigmaMu.toFixed(3);
+  }
+}
+
+document.getElementById('sigma-mu-slider').addEventListener('input', function() {
+  sigmaMu = parseFloat(this.value);
+  updateNoiseDisplay();
+});
+document.getElementById('sigma-s-slider').addEventListener('input', function() {
+  sigmaS = parseFloat(this.value);
+  updateNoiseDisplay();
+});
+
+updateNoiseDisplay();
+</script>
+</body>
+</html>

@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GripSense Live — Tire-Road Friction Identification</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e1118;--panel:#1a2030;--card:#141920;
+  --border:#ffffff12;--border2:#ffffff1e;
+  --text:#f0f4f8;--muted:#cacaca;--subtle:#6b7a92;
+  --green:#34d399;--green2:#6ee7b7;
+  --blue:#60a5fa;--blue2:#93c5fd;
+  --snow:#c8d4e0;--snow2:#e2ecf4;
+  --purple:#818cf8;--purple2:#a5b4fc;
+  --amber:#fbbf24;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;}
+#bg-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.45;}
+.nav{position:sticky;top:0;z-index:100;background:#0e1118ee;backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:11px 40px;display:flex;align-items:center;justify-content:space-between;}
+.nav-brand{display:flex;align-items:center;gap:10px;}
+.nav-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.nav-title{font-size:13px;font-weight:700;letter-spacing:-.2px;}
+.nav-badge{background:var(--panel);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:10px;color:var(--muted);letter-spacing:1px;}
+.nav-cta{background:var(--purple);color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 0 20px #818cf840;transition:transform .15s,box-shadow .15s;text-decoration:none;display:inline-flex;align-items:center;}
+.nav-cta:hover{transform:translateY(-1px);box-shadow:0 0 28px #818cf860;}
+.container{max-width:1080px;margin:0 auto;padding:0 36px;position:relative;z-index:1;}
+.hero{padding:80px 0 52px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:20px;}
+.event-tag{display:inline-flex;align-items:center;gap:8px;background:#818cf810;border:1px solid #818cf830;border-radius:20px;padding:5px 15px;font-size:11px;color:var(--purple2);letter-spacing:1.5px;text-transform:uppercase;font-weight:500;}
+.tag-dot{width:5px;height:5px;border-radius:50%;background:var(--purple2);}
+h1{font-size:clamp(28px,5vw,54px);font-weight:800;line-height:1.08;letter-spacing:-2px;max-width:700px;}
+.grad{background:linear-gradient(135deg,var(--text) 0%,var(--muted) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hi{background:linear-gradient(135deg,var(--purple),var(--blue),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hero-sub{font-size:15px;color:var(--muted);line-height:1.75;max-width:540px;}
+.team-strip{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:4px;}
+.team-member{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--border);border-radius:40px;padding:6px 14px 6px 6px;transition:border-color .2s,transform .18s,box-shadow .18s;cursor:default;}
+.team-member:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 6px 20px #00000040;}
+.team-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;border:1.5px solid var(--border2);flex-shrink:0;display:block;}
+.team-avatar-ph{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--border2);background:var(--card);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--purple2);flex-shrink:0;}
+.team-name{font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;}
+.team-role{font-size:9px;color:var(--muted);white-space:nowrap;}
+.cta-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:4px;}
+.cta-btn{display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,#6366f1,var(--purple));color:#fff;border:none;border-radius:10px;padding:14px 34px;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 0 30px #818cf830,0 4px 20px #00000050;letter-spacing:.3px;transition:transform .15s,box-shadow .18s;text-decoration:none;}
+.cta-btn:hover{transform:translateY(-2px);box-shadow:0 0 44px #818cf850,0 8px 28px #00000060;}
+.cta-sub{font-size:11px;color:var(--subtle);}
+.divider{border:none;border-top:1px solid var(--border);margin:0;}
+.section{padding:56px 0;}
+.section-label{font-size:9px;color:var(--purple2);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin-bottom:8px;}
+.section-title{font-size:clamp(18px,3vw,26px);font-weight:700;letter-spacing:-.4px;margin-bottom:6px;}
+.section-sub{font-size:14px;color:var(--muted);line-height:1.7;max-width:640px;margin-bottom:28px;}
+.data-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.data-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px 16px;transition:border-color .2s,transform .18s,box-shadow .18s;}
+.data-card:hover{border-color:var(--border2);transform:translateY(-3px);box-shadow:0 8px 24px #00000040;}
+.data-val{font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1;}
+.data-key{font-size:10px;color:var(--subtle);margin-top:6px;letter-spacing:1px;text-transform:uppercase;}
+.data-detail{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5;}
+.data-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.detail-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;transition:border-color .2s,transform .18s;}
+.detail-card:hover{border-color:var(--border2);transform:translateY(-2px);}
+.detail-title{font-size:11px;font-weight:600;margin-bottom:8px;color:var(--text);}
+.detail-body{font-size:11px;color:var(--muted);line-height:1.7;}
+.detail-body b{color:var(--text);}
+.detail-body code{font-family:'JetBrains Mono',monospace;font-size:10px;background:#ffffff08;padding:1px 5px;border-radius:3px;color:var(--snow);}
+.flow{display:grid;grid-template-columns:1fr 24px 1fr 24px 1fr;align-items:center;}
+.flow-arrow{text-align:center;color:var(--subtle);font-size:16px;}
+.flow-card{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:18px;position:relative;overflow:hidden;transition:transform .18s,box-shadow .18s,border-color .2s;}
+.flow-card:hover{transform:translateY(-3px);box-shadow:0 8px 28px #00000050;}
+.flow-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.flow-card.l1::before{background:linear-gradient(90deg,var(--amber),transparent);}
+.flow-card.l2::before{background:linear-gradient(90deg,var(--purple),transparent);}
+.flow-card.l3::before{background:linear-gradient(90deg,var(--green),transparent);}
+.flow-num{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--subtle);margin-bottom:8px;}
+.flow-name{font-size:13px;font-weight:700;margin-bottom:6px;}
+.flow-desc{font-size:11px;color:var(--muted);line-height:1.6;}
+.flow-badge{display:inline-block;background:#ffffff08;border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--snow);margin-top:8px;}
+.eq-box{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:20px 24px;margin-top:20px;display:flex;align-items:center;gap:28px;transition:border-color .2s;}
+.eq-box:hover{border-color:#ffffff28;}
+.eq-formula{font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--text);}
+.eq-legend{font-size:11px;color:var(--muted);line-height:1.9;}
+.curves-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.curve-card{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:16px;transition:transform .18s,box-shadow .18s,border-color .2s;}
+.curve-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px #00000044;border-color:#ffffff22;}
+.curve-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.curve-name{font-size:12px;font-weight:600;}
+.curve-name.dry{color:var(--green2);}
+.curve-name.wet{color:var(--blue2);}
+.curve-name.snow{color:var(--snow2);}
+.curve-badge{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--subtle);}
+.curve-params{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:10px;}
+.cp{background:#ffffff06;border-radius:5px;padding:5px;text-align:center;transition:background .15s;}
+.cp:hover{background:#ffffff0f;}
+.cpk{font-size:8px;color:var(--subtle);font-family:'JetBrains Mono',monospace;}
+.cpv{font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:var(--snow);}
+.pred-table{width:100%;border-collapse:collapse;font-size:12px;}
+.pred-table th{background:var(--panel);color:var(--muted);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:10px 14px;border-bottom:1px solid var(--border2);text-align:left;font-weight:500;}
+.pred-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);transition:background .15s;}
+.pred-table tr:last-child td{border-bottom:none;}
+.pred-table tbody tr:hover td{background:#ffffff04;}
+.bs{display:inline-flex;align-items:center;gap:5px;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:600;border:1px solid;}
+.bs.dry{background:#052e1618;border-color:#22543d60;color:var(--green2);}
+.bs.wet{background:#1e3a5f18;border-color:#1d4ed860;color:var(--blue2);}
+.bs.snow{background:#1e293b;border-color:#47556960;color:var(--snow2);}
+.correct{color:var(--green2);font-weight:600;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;}
+.slider-card{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:28px 28px 24px;}
+.slider-row{display:flex;align-items:center;gap:16px;margin:16px 0;}
+.slider-wrap{flex:1;}
+input[type=range]{width:100%;-webkit-appearance:none;height:5px;border-radius:3px;outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--purple);border:3px solid var(--bg);box-shadow:0 0 10px #818cf855;cursor:pointer;}
+.slider-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--subtle);font-family:'JetBrains Mono',monospace;margin-top:4px;}
+.sigma-box{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:10px 16px;text-align:center;min-width:100px;}
+.sigma-val{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--purple);}
+.sigma-key{font-size:9px;color:var(--subtle);margin-top:2px;letter-spacing:1px;}
+.metrics-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.mcard{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;transition:border-color .3s;}
+.mcard.good{border-color:#34d39930;}
+.mcard.warn{border-color:#fbbf2430;}
+.mcard.bad{border-color:#f8717130;}
+.mval{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;transition:color .3s;}
+.mkey{font-size:9px;color:var(--subtle);margin-top:3px;letter-spacing:1px;text-transform:uppercase;}
+.explain-row{display:flex;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;}
+.ex-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
+.ex-text{font-size:12px;color:var(--muted);line-height:1.7;}
+.ex-text b{color:var(--text);}
+.noise-viz{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:14px 0;}
+.nv-card{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:10px;}
+.nv-title{font-size:9px;font-weight:600;margin-bottom:6px;letter-spacing:.5px;text-transform:uppercase;}
+.nv-title.dry{color:var(--green2);}
+.nv-title.wet{color:var(--blue2);}
+.nv-title.snow{color:var(--snow2);}
+.metric-note{background:var(--card);border:1px solid #818cf820;border-radius:8px;padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.7;margin-top:14px;}
+.metric-note b{color:var(--purple2);}
+.upload-card{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:28px;}
+.upload-zone{border:2px dashed var(--border2);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--purple);background:#818cf808;}
+.upload-icon{font-size:28px;margin-bottom:10px;opacity:.6;}
+.upload-label{font-size:13px;font-weight:600;margin-bottom:5px;}
+.upload-hint{font-size:11px;color:var(--muted);}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
+.info-bullet{background:#818cf810;border:1px solid #818cf830;border-radius:10px;padding:16px 18px;margin-top:16px;}
+.info-bullet-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--purple2);margin-bottom:10px;}
+.info-icon{font-size:14px;}
+.info-list{list-style:none;display:flex;flex-direction:column;gap:5px;}
+.info-list li{font-size:11px;color:var(--muted);display:flex;align-items:baseline;gap:8px;line-height:1.6;}
+.info-list li code{font-family:'JetBrains Mono',monospace;font-size:10px;background:#ffffff0a;padding:1px 6px;border-radius:3px;color:var(--snow);flex-shrink:0;}
+.info-list li span{color:var(--subtle);}
+.upload-result{display:none;margin-top:14px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;}
+.upload-result.show{display:block;}
+.ur-header{font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;}
+.ur-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;}
+.ur-stat{background:#ffffff06;border-radius:6px;padding:9px;text-align:center;}
+.ur-val{font-size:16px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--purple2);}
+.ur-key{font-size:9px;color:var(--subtle);margin-top:3px;letter-spacing:.5px;text-transform:uppercase;}
+.ur-table-wrap{overflow-x:auto;max-height:180px;overflow-y:auto;border-radius:6px;border:1px solid var(--border);}
+.ur-table{width:100%;border-collapse:collapse;font-size:11px;}
+.ur-table th{background:var(--panel);color:var(--muted);font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;position:sticky;top:0;}
+.ur-table td{padding:7px 10px;border-bottom:1px solid #ffffff08;color:var(--text);font-family:'JetBrains Mono',monospace;}
+.ur-table tr:last-child td{border-bottom:none;}
+.ur-error{color:#f87171;font-size:12px;display:flex;gap:8px;align-items:flex-start;}
+.authors-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.author-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;gap:9px;transition:border-color .2s,transform .18s,box-shadow .18s;cursor:default;}
+.author-card:hover{border-color:var(--border2);transform:translateY(-3px);box-shadow:0 8px 24px #00000044;}
+.author-avatar{width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--border2);display:block;}
+.author-avatar-ph{width:48px;height:48px;border-radius:50%;border:2px solid var(--border2);background:var(--card);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--purple2);}
+.author-name{font-size:12px;font-weight:600;text-align:center;line-height:1.3;}
+.author-role{font-size:10px;color:var(--muted);text-align:center;line-height:1.5;}
+.author-uni{font-size:9px;color:var(--subtle);}
+.author-uni a{color:var(--purple2);text-decoration:none;}
+.author-uni a:hover{text-decoration:underline;}
+.footer{border-top:1px solid var(--border);padding:22px 40px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--subtle);}
+.footer a{color:var(--purple2);text-decoration:none;}
+.footer a:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<script>
+(function(){
+  const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+  let W,H,pts=[];
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  for(let i=0;i<50;i++) pts.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.18});
+  let mx=-999,my=-999;
+  window.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<pts.length;i++){
+      const dx=pts[i].x-mx,dy=pts[i].y-my,dist=Math.hypot(dx,dy);
+      if(dist<120){pts[i].vx+=dx/dist*.04;pts[i].vy+=dy/dist*.04;}
+      const spd=Math.hypot(pts[i].vx,pts[i].vy);
+      if(spd>0.8){pts[i].vx=pts[i].vx/spd*.8;pts[i].vy=pts[i].vy/spd*.8;}
+      for(let j=i+1;j<pts.length;j++){
+        const d=Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y);
+        if(d<130){ctx.strokeStyle=`rgba(129,140,248,${(1-d/130)*.1})`;ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.stroke();}
+      }
+      ctx.fillStyle='rgba(129,140,248,.3)';ctx.beginPath();ctx.arc(pts[i].x,pts[i].y,1.4,0,Math.PI*2);ctx.fill();
+      pts[i].x+=pts[i].vx;pts[i].y+=pts[i].vy;
+      if(pts[i].x<0||pts[i].x>W)pts[i].vx*=-1;
+      if(pts[i].y<0||pts[i].y>H)pts[i].vy*=-1;
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+
+<nav class="nav">
+  <div class="nav-brand">
+    <div class="nav-dot"></div>
+    <span class="nav-title">GripSense Live</span>
+  </div>
+  <div class="nav-badge">NTT DATA BEST 2026</div>
+  <a class="nav-cta" href="/dashboard">▶ Live Dashboard</a>
+</nav>
+
+<div class="container">
+
+<section class="hero">
+  <div class="event-tag">
+    <div class="tag-dot"></div>
+    NTT DATA BEST Hackathon 2026 &nbsp;·&nbsp;
+    <a href="https://www.polito.it/" target="_blank" style="color:var(--purple2);text-decoration:none;">Politecnico di Torino</a>
+  </div>
+  <h1>
+    <span class="grad">GripSense</span><br>
+    <span class="hi">Live</span>
+  </h1>
+  <p class="hero-sub">
+    Real-time tire-road friction identification using ESC gradient analysis and Burckhardt NLS classification — per wheel, per braking event, without stopping the vehicle.
+  </p>
+  <div class="team-strip">
+    <div class="team-member">
+      <img class="team-avatar" src="/static/img/sajjad-shahali.jpg" alt="SS" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">SS</div>
+      <div><div class="team-name">Sajjad Shahali</div><div class="team-role">MSc <a href="https://www.polito.it/" target="_blank" style="color:inherit">POLITO</a></div></div>
+    </div>
+    <div class="team-member">
+      <img class="team-avatar" src="/static/img/omer-ozkan.jpg" alt="OO" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">OO</div>
+      <div><div class="team-name">Omer Ozkan</div><div class="team-role">MSc <a href="https://www.polito.it/" target="_blank" style="color:inherit">POLITO</a></div></div>
+    </div>
+    <div class="team-member">
+      <img class="team-avatar" src="/static/img/khaan-sadigh-aslan.jpg" alt="KA" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">KA</div>
+      <div><div class="team-name">Kaan Sadik Aslan</div><div class="team-role">MSc <a href="https://www.polito.it/" target="_blank" style="color:inherit">POLITO</a></div></div>
+    </div>
+    <div class="team-member">
+      <img class="team-avatar" src="/static/img/berk-ali-demir.jpg" alt="BD" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="team-avatar-ph" style="display:none">BD</div>
+      <div><div class="team-name">Berk Ali Demir</div><div class="team-role">MSc <a href="https://www.polito.it/" target="_blank" style="color:inherit">POLITO</a></div></div>
+    </div>
+  </div>
+  <div class="cta-wrap">
+    <a class="cta-btn" href="/dashboard">▶ &nbsp;Start Live Demo</a>
+    <span class="cta-sub">Replaying friction_data_full.csv · 48 MATLAB simulations · 100 ms / sample</span>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section">
+  <div class="section-label">Dataset</div>
+  <div class="section-title">About the Data</div>
+  <p class="section-sub">48 closed-loop braking simulations generated in MATLAB/Simulink across 8 road scenarios, 3 brake force distributions, and 2 controller modes.</p>
+  <div class="data-grid">
+    <div class="data-card">
+      <div class="data-val" style="color:var(--purple2)">48</div>
+      <div class="data-key">Simulations</div>
+      <div class="data-detail">8 scenarios × 3 brake distributions × 2 modes</div>
+    </div>
+    <div class="data-card">
+      <div class="data-val" style="color:var(--muted)">765k</div>
+      <div class="data-key">Raw rows</div>
+      <div class="data-detail">Timestep ~1 ms · 29 columns: slip, μ, ESC signals, ground truth</div>
+    </div>
+    <div class="data-card">
+      <div class="data-val" style="color:var(--blue2)">20.6k</div>
+      <div class="data-key">Prepared rows</div>
+      <div class="data-detail">ABS filter · α>0.01 · stride=10 · balanced per surface</div>
+    </div>
+    <div class="data-card">
+      <div class="data-val" style="color:var(--green2)">3</div>
+      <div class="data-key">Surfaces</div>
+      <div class="data-detail">Dry asphalt · Wet asphalt · Snow</div>
+    </div>
+  </div>
+  <div class="data-detail-grid">
+    <div class="detail-card">
+      <div class="detail-title">Preprocessing pipeline</div>
+      <div class="detail-body">
+        Raw 765k → <b>ABS filter</b> (abs_active=1) → 479k<br>
+        → <b>Confidence filter</b> (α > 0.01) → 340k<br>
+        → <b>Slip range</b> (0.002 ≤ s ≤ 0.55) → 310k<br>
+        → <b>Stride=10</b> (removes autocorrelation) → 48k<br>
+        → <b>Balance</b> Snow≤12k, Dry/Wet≤6k → <b>20,616 rows</b>
+      </div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-title">Key signals per row</div>
+      <div class="detail-body">
+        <code>slip</code> — wheel slip ratio (encoder)<br>
+        <code>mu_noisy</code> — friction coefficient (force estimation)<br>
+        <code>g_esc</code> — ESC gradient from LPF demodulator<br>
+        <code>a_esc</code> — ESC dither amplitude<br>
+        <code>alpha</code> — identifier confidence (0–1)<br>
+        <code>surface</code> — ground truth label
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section">
+  <div class="section-label">Algorithm</div>
+  <div class="section-title">Three-Layer ESC Identifier</div>
+  <p class="section-sub">Three layers fire in cascade — each activates when its precondition is met.</p>
+  <div class="flow">
+    <div class="flow-card l1">
+      <div class="flow-num">Layer 1 — Always active</div>
+      <div class="flow-name" style="color:var(--amber)">Lookup Table</div>
+      <div class="flow-desc">Maps observed peak friction μ_max to a coarse c₂ estimate via linear interpolation.</div>
+      <div class="flow-badge">μ_max → c₂_coarse</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-card l2">
+      <div class="flow-num">Layer 2 — ESC gradient available</div>
+      <div class="flow-name" style="color:var(--purple2)">ESC-Gradient Analytic</div>
+      <div class="flow-desc">Converts ESC demodulator output to friction gradient, solves analytically for c₁ and c₃.</div>
+      <div class="flow-badge">g_esc → c₁, c₃</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-card l3">
+      <div class="flow-num">Layer 3 — Sufficient slip excitation</div>
+      <div class="flow-name" style="color:var(--green2)">Brent Root-Finding</div>
+      <div class="flow-desc">Solves for c₂ from two curve points using Brent's method (guaranteed convergence).</div>
+      <div class="flow-badge">|s_probe − s_peak| > δ → c₂_fine</div>
+    </div>
+  </div>
+  <div class="eq-box">
+    <div>
+      <div style="font-size:9px;color:var(--subtle);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Burckhardt Friction Model</div>
+      <div class="eq-formula">μ(s) = c₁ · (1 − e<sup>−c₂|s|</sup>) − c₃ · |s|</div>
+    </div>
+    <div style="width:1px;height:40px;background:var(--border2);flex-shrink:0;"></div>
+    <div class="eq-legend">
+      <b style="color:var(--text)">c₁</b> — friction amplitude &nbsp;·&nbsp;
+      <b style="color:var(--text)">c₂</b> — curve sharpness <span style="color:var(--purple2)">(key discriminant: 24 dry / 34 wet / 94 snow)</span> &nbsp;·&nbsp;
+      <b style="color:var(--text)">c₃</b> — slope after peak
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section">
+  <div class="section-label">Robustness</div>
+  <div class="section-title">Sensor Noise vs Classification Performance</div>
+  <p class="section-sub">Drag the slider to add Gaussian noise (σ_μ) on top of the real data.</p>
+  <div class="slider-card">
+    <div class="slider-row">
+      <div class="slider-wrap">
+        <input type="range" id="noiseSlider" min="0" max="7" step="1" value="2">
+        <div class="slider-labels"><span>0.000</span><span>0.005</span><span>0.010</span><span>0.020</span><span>0.030</span><span>0.050</span><span>0.070</span><span>0.100</span></div>
+      </div>
+      <div class="sigma-box"><div class="sigma-val" id="sigmaDisplay">0.010</div><div class="sigma-key">σ_μ added</div></div>
+    </div>
+    <div class="metrics-row">
+      <div class="mcard warn" id="m-f1"><div class="mval" id="v-f1">0.724</div><div class="mkey">F1 Macro</div></div>
+      <div class="mcard warn" id="m-bac"><div class="mval" id="v-bac">0.733</div><div class="mkey">Bal. Accuracy</div></div>
+      <div class="mcard warn" id="m-prec"><div class="mval" id="v-prec">0.787</div><div class="mkey">Precision</div></div>
+      <div class="mcard warn" id="m-rec"><div class="mval" id="v-rec">0.733</div><div class="mkey">Recall</div></div>
+    </div>
+    <div class="noise-viz">
+      <div class="nv-card"><div class="nv-title dry">Dry (μ≈1.17)</div><svg width="100%" height="44" viewBox="0 0 200 44" id="viz-dry"><line x1="0" y1="38" x2="200" y2="38" stroke="#ffffff0a" stroke-width="1"/></svg></div>
+      <div class="nv-card"><div class="nv-title wet">Wet (μ≈0.80)</div><svg width="100%" height="44" viewBox="0 0 200 44" id="viz-wet"><line x1="0" y1="38" x2="200" y2="38" stroke="#ffffff0a" stroke-width="1"/></svg></div>
+      <div class="nv-card"><div class="nv-title snow">Snow (μ≈0.19)</div><svg width="100%" height="44" viewBox="0 0 200 44" id="viz-snow"><line x1="0" y1="38" x2="200" y2="38" stroke="#ffffff0a" stroke-width="1"/></svg></div>
+    </div>
+    <div class="explain-row">
+      <div class="ex-icon" id="ex-icon">✅</div>
+      <div class="ex-text" id="ex-text"><b>Zero added noise.</b> The mu_noisy column already includes realistic ABS sensor noise. Classifier achieves perfect F1 on the prepared dataset.</div>
+    </div>
+    <div class="metric-note"><b>Why F1 macro + Balanced Accuracy?</b> With equal batch counts per surface, F1 macro = BAC — neither inflates due to class imbalance. Key finding: <b>Dry↔Wet confusion</b> is the dominant failure mode. <b>Snow stays identifiable to σ≈0.05</b> due to its distinctive c₂=94.</div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section">
+  <div class="section-label">Custom Data</div>
+  <div class="section-title">Upload Your Own Dataset</div>
+  <p class="section-sub">Run the Burckhardt classifier on your own CSV file — processed entirely in-browser.</p>
+  <div class="upload-card">
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="csv-input" accept=".csv">
+      <div class="upload-icon">📂</div>
+      <div class="upload-label">Drop CSV file here or click to browse</div>
+      <div class="upload-hint">Accepts .csv files · No data leaves your machine</div>
+    </div>
+    <div class="info-bullet">
+      <div class="info-bullet-title"><span class="info-icon">ℹ</span> Required CSV file structure</div>
+      <ul class="info-list">
+        <li><code>slip</code> <span>— Wheel slip ratio, float, range 0.002 – 0.55 (required)</span></li>
+        <li><code>mu_noisy</code> <span>— Measured friction coefficient, float (required)</span></li>
+        <li><code>surface</code> <span>— Ground truth: <code style="display:inline">Dry asphalt</code> / <code style="display:inline">Wet asphalt</code> / <code style="display:inline">Snow</code> — for accuracy scoring (optional)</span></li>
+        <li><code>alpha</code> <span>— ESC confidence 0–1; rows with α &lt; 0.01 filtered out (optional)</span></li>
+        <li>— <span>Column names are <b>case-sensitive</b>. Minimum <b>50 rows</b> needed per window.</span></li>
+      </ul>
+    </div>
+    <div class="upload-result" id="upload-result"></div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section">
+  <div class="section-label">Team</div>
+  <div class="section-title">Authors</div>
+  <div class="authors-grid" style="margin-top:22px;">
+    <div class="author-card">
+      <img class="author-avatar" src="/static/img/sajjad-shahali.jpg" alt="SS" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">SS</div>
+      <div class="author-name">Sajjad Shahali</div>
+      <div class="author-role">Machine Learning Engineer</div>
+      <div class="author-uni">MSc · <a href="https://www.polito.it/" target="_blank">POLITO</a></div>
+    </div>
+    <div class="author-card">
+      <img class="author-avatar" src="/static/img/omer-ozkan.jpg" alt="OO" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">OO</div>
+      <div class="author-name">Omer Ozkan</div>
+      <div class="author-role">Data Science & Engineer</div>
+      <div class="author-uni">MSc · <a href="https://www.polito.it/" target="_blank">POLITO</a></div>
+    </div>
+    <div class="author-card">
+      <img class="author-avatar" src="/static/img/khaan-sadigh-aslan.jpg" alt="KA" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">KA</div>
+      <div class="author-name">Kaan Sadik Aslan</div>
+      <div class="author-role">Mechatronic Engineering</div>
+      <div class="author-uni">MSc · <a href="https://www.polito.it/" target="_blank">POLITO</a></div>
+    </div>
+    <div class="author-card">
+      <img class="author-avatar" src="/static/img/berk-ali-demir.jpg" alt="BD" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="author-avatar-ph" style="display:none">BD</div>
+      <div class="author-name">Berk Ali Demir</div>
+      <div class="author-role">Electrical Computer Engineering</div>
+      <div class="author-uni">MSc · <a href="https://www.polito.it/" target="_blank">POLITO</a></div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer class="footer">
+  <span>© 2026 NTT DATA BEST Hackathon · <a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a> · GripSense Live</span>
+  <div style="display:flex;gap:18px;align-items:center;">
+    <span>ESC Gradient · Burckhardt NLS · Three.js</span>
+    <span style="color:var(--border2)">·</span>
+    <a href="https://github.com/Sajjad-Shahali/NTT_DATA_hackathon" target="_blank">GitHub ↗</a>
+  </div>
+</footer>
+
+<script>
+const noiseData=[
+  {sigma:0.000,f1:1.000,bac:1.000,prec:1.000,rec:1.000},
+  {sigma:0.005,f1:0.667,bac:0.667,prec:0.679,rec:0.667},
+  {sigma:0.010,f1:0.724,bac:0.733,prec:0.787,rec:0.733},
+  {sigma:0.020,f1:0.636,bac:0.633,prec:0.678,rec:0.633},
+  {sigma:0.030,f1:0.639,bac:0.633,prec:0.690,rec:0.633},
+  {sigma:0.050,f1:0.528,bac:0.533,prec:0.638,rec:0.533},
+  {sigma:0.070,f1:0.385,bac:0.400,prec:0.468,rec:0.400},
+  {sigma:0.100,f1:0.436,bac:0.433,prec:0.579,rec:0.433},
+];
+const exps=[
+  {i:'✅',t:'<b>Zero added noise.</b> mu_noisy already has realistic ABS sensor noise. Classifier achieves perfect F1.'},
+  {i:'⚠️',t:'<b>σ=0.005 — Light noise.</b> F1=0.667. Wet asphalt starts being confused with Dry.'},
+  {i:'🔬',t:'<b>σ=0.010 — Realistic vehicle sensors.</b> F1=0.724. Acceptable performance — reference operating point.'},
+  {i:'⚠️',t:'<b>σ=0.020 — Degraded sensors.</b> F1=0.636. Dry/Wet confusion increases.'},
+  {i:'⚠️',t:'<b>σ=0.030 — Noisy conditions.</b> F1=0.639. Dry↔Wet confusion dominates.'},
+  {i:'❌',t:'<b>σ=0.050 — Severely degraded.</b> F1=0.528. Most Dry batches misclassified as Wet.'},
+  {i:'❌',t:'<b>σ=0.070 — Sensor failure.</b> F1=0.385. Snow still ~80% correct (c₂=94 is distinctive).'},
+  {i:'❌',t:'<b>σ=0.100 — Extreme.</b> F1=0.436. Classifier broken for Dry/Wet.'},
+];
+const surfaces=[{id:'viz-dry',mu:1.17,color:'#34d399'},{id:'viz-wet',mu:0.80,color:'#60a5fa'},{id:'viz-snow',mu:0.19,color:'#c8d4e0'}];
+function colorFor(v){return v>=0.9?'#34d399':v>=0.7?'#fbbf24':'#f87171';}
+function classFor(v){return v>=0.9?'good':v>=0.7?'warn':'bad';}
+function updateViz(sigma){
+  surfaces.forEach(({id,mu,color})=>{
+    const svg=document.getElementById(id);
+    [...svg.querySelectorAll('.dot,.mline')].forEach(e=>e.remove());
+    for(let i=0;i<40;i++){
+      const noise=(Math.sin(i*2.3+sigma*10)*.5+Math.cos(i*1.7+sigma*5)*.5)*sigma*2.5;
+      const muN=Math.max(0,mu+noise);
+      const x=4+i*4.8,y=Math.max(2,Math.min(36,36-(muN/1.4)*32));
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',x.toFixed(1));c.setAttribute('cy',y.toFixed(1));c.setAttribute('r','1.8');c.setAttribute('fill',color);c.setAttribute('opacity',sigma===0?'0.65':'0.45');c.setAttribute('class','dot');svg.appendChild(c);
+    }
+    const yM=Math.max(2,36-(mu/1.4)*32);
+    const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+    ln.setAttribute('x1','0');ln.setAttribute('x2','200');ln.setAttribute('y1',yM.toFixed(1));ln.setAttribute('y2',yM.toFixed(1));
+    ln.setAttribute('stroke',color);ln.setAttribute('stroke-width','1');ln.setAttribute('stroke-dasharray','4,3');ln.setAttribute('opacity','.35');ln.setAttribute('class','mline');svg.appendChild(ln);
+  });
+}
+function updateNoise(idx){
+  const d=noiseData[idx];
+  document.getElementById('sigmaDisplay').textContent=d.sigma.toFixed(3);
+  ['f1','bac','prec','rec'].forEach(k=>{
+    const v=d[k];
+    document.getElementById('v-'+k).textContent=v.toFixed(3);
+    document.getElementById('v-'+k).style.color=colorFor(v);
+    document.getElementById('m-'+k).className='mcard '+classFor(v);
+  });
+  document.getElementById('ex-icon').textContent=exps[idx].i;
+  document.getElementById('ex-text').innerHTML=exps[idx].t;
+  const pct=(idx/7)*100;
+  document.getElementById('noiseSlider').style.background=`linear-gradient(90deg,#818cf8 0%,#818cf8 ${pct}%,#2d3748 ${pct}%,#2d3748 100%)`;
+  updateViz(d.sigma);
+}
+document.getElementById('noiseSlider').addEventListener('input',function(){updateNoise(parseInt(this.value));});
+updateNoise(2);
+
+// CSV upload
+const PROTOTYPES={
+  'Dry asphalt':{c1:1.280,c2:23.99,c3:0.520},
+  'Wet asphalt':{c1:0.857,c2:33.82,c3:0.347},
+  'Snow':{c1:0.195,c2:94.13,c3:0.065},
+};
+function burckhardtFit(slips,mus){
+  const seeds=[[1.28,24,0.52],[0.86,34,0.35],[0.19,94,0.065]];
+  let best=[0.5,40,0.3],bestMSE=Infinity;
+  seeds.forEach(([sc1,sc2,sc3])=>{
+    const c1v=[sc1*.8,sc1,sc1*1.2];
+    const c2v=[sc2*.8,sc2,sc2*1.2];
+    const c3v=[sc3*.8,sc3,sc3*1.2];
+    c1v.forEach(c1=>c2v.forEach(c2=>c3v.forEach(c3=>{
+      let mse=0;
+      for(let i=0;i<slips.length;i++){const p=c1*(1-Math.exp(-c2*Math.abs(slips[i])))-c3*Math.abs(slips[i]);mse+=Math.pow(p-mus[i],2);}
+      mse/=slips.length;
+      if(mse<bestMSE){bestMSE=mse;best=[c1,c2,c3];}
+    })));
+  });
+  return best;
+}
+function classifyCSV(c1,c2,c3){
+  const norm={c1:[0.195,1.28-0.195],c2:[23.99,94.13-23.99],c3:[0.065,0.52-0.065]};
+  const nv=[(c1-norm.c1[0])/norm.c1[1],(c2-norm.c2[0])/norm.c2[1],(c3-norm.c3[0])/norm.c3[1]];
+  let best=null,bestD=Infinity;
+  Object.entries(PROTOTYPES).forEach(([lbl,p])=>{
+    const np=[(p.c1-norm.c1[0])/norm.c1[1],(p.c2-norm.c2[0])/norm.c2[1],(p.c3-norm.c3[0])/norm.c3[1]];
+    const d=Math.hypot(nv[0]-np[0],nv[1]-np[1],nv[2]-np[2]);
+    if(d<bestD){bestD=d;best=lbl;}
+  });
+  return best;
+}
+function parseCSV(text){
+  const lines=text.trim().split('\n');
+  const header=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+  return lines.slice(1).map(line=>{
+    const vals=line.split(',');const row={};
+    header.forEach((h,i)=>{row[h]=(vals[i]||'').trim().replace(/^"|"$/g,'');});
+    return row;
+  });
+}
+function showUploadError(msg){
+  const r=document.getElementById('upload-result');
+  r.innerHTML=`<div class="ur-error">⚠ ${msg}</div>`;r.classList.add('show');
+}
+function processCSV(text){
+  let rows;
+  try{rows=parseCSV(text);}catch(e){showUploadError('Could not parse CSV: '+e.message);return;}
+  if(!rows.length){showUploadError('File appears to be empty.');return;}
+  if(!('slip' in rows[0])){showUploadError('Missing required column: slip');return;}
+  if(!('mu_noisy' in rows[0])){showUploadError('Missing required column: mu_noisy');return;}
+  const hasAlpha='alpha' in rows[0],hasSurface='surface' in rows[0];
+  const filtered=rows.filter(r=>{
+    const s=parseFloat(r.slip),m=parseFloat(r.mu_noisy);
+    if(isNaN(s)||isNaN(m))return false;
+    if(s<0.002||s>0.55)return false;
+    if(hasAlpha&&parseFloat(r.alpha)<0.01)return false;
+    return true;
+  });
+  if(filtered.length<50){showUploadError(`Only ${filtered.length} valid rows — need at least 50.`);return;}
+  const results=[];
+  for(let i=0;i+50<=filtered.length;i+=50){
+    const batch=filtered.slice(i,i+50);
+    const slips=batch.map(r=>parseFloat(r.slip)),mus=batch.map(r=>parseFloat(r.mu_noisy));
+    const[c1,c2,c3]=burckhardtFit(slips,mus);
+    const pred=classifyCSV(c1,c2,c3);
+    const truth=hasSurface?batch[0].surface:'—';
+    const correct=truth==='—'?'—':(pred===truth?'✓':'✗');
+    const muAvg=(mus.reduce((a,b)=>a+b,0)/mus.length).toFixed(3);
+    results.push({batch:i/50+1,pred,truth,c1:c1.toFixed(3),c2:c2.toFixed(2),c3:c3.toFixed(3),muAvg,correct});
+  }
+  const nC=hasSurface?results.filter(r=>r.correct==='✓').length:null;
+  const acc=hasSurface?(nC/results.length*100).toFixed(1):null;
+  const r=document.getElementById('upload-result');
+  r.innerHTML=`<div class="ur-header">Classified ${results.length} window${results.length!==1?'s':''} from ${filtered.length} valid rows${hasSurface?` · Accuracy: ${acc}%`:''}</div>
+  <div class="ur-stats">
+    <div class="ur-stat"><div class="ur-val">${filtered.length}</div><div class="ur-key">Valid rows</div></div>
+    <div class="ur-stat"><div class="ur-val">${results.length}</div><div class="ur-key">Windows</div></div>
+    <div class="ur-stat"><div class="ur-val" style="color:${hasSurface?(parseFloat(acc)>=90?'var(--green2)':parseFloat(acc)>=70?'var(--amber)':'#f87171'):'var(--purple2)'}">${hasSurface?acc+'%':'—'}</div><div class="ur-key">${hasSurface?'Accuracy':'No labels'}</div></div>
+  </div>
+  <div class="ur-table-wrap"><table class="ur-table">
+    <thead><tr><th>#</th><th>Predicted</th>${hasSurface?'<th>True</th>':''}<th>c₁</th><th>c₂</th><th>c₃</th><th>μ avg</th>${hasSurface?'<th></th>':''}</tr></thead>
+    <tbody>${results.map(row=>{
+      const cls=row.pred==='Dry asphalt'?'dry':row.pred==='Wet asphalt'?'wet':'snow';
+      return `<tr><td>${row.batch}</td><td><span class="bs ${cls}">${row.pred}</span></td>${hasSurface?`<td style="color:var(--muted)">${row.truth}</td>`:''}<td>${row.c1}</td><td>${row.c2}</td><td>${row.c3}</td><td>${row.muAvg}</td>${hasSurface?`<td style="color:${row.correct==='✓'?'var(--green2)':'#f87171'}">${row.correct}</td>`:''}</tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+  r.classList.add('show');
+}
+const csvInput=document.getElementById('csv-input'),uploadZone=document.getElementById('upload-zone');
+csvInput.addEventListener('change',function(){if(this.files[0])readFile(this.files[0]);});
+uploadZone.addEventListener('dragover',e=>{e.preventDefault();uploadZone.classList.add('drag');});
+uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('drag');if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);});
+function readFile(file){
+  if(!file.name.endsWith('.csv')&&file.type!=='text/csv'){showUploadError('Please upload a .csv file.');return;}
+  const reader=new FileReader();
+  reader.onload=e=>processCSV(e.target.result);
+  reader.readAsText(file);
+}
+</script>
+</body>
+</html>
