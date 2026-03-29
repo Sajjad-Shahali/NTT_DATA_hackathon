@@ -446,6 +446,46 @@ python eval_classification.py             # F1 / Precision / Recall report
 
 ---
 
+## Results & Analysis
+
+### Core Results (3 plots)
+
+#### 1. Friction Curves: The Challenge
+
+![Friction curves for all 4 surfaces](reports/plots/01_surfaces_overview.png)
+
+*All four road surfaces with ground-truth Burckhardt parameters. Note: Ice is nearly flat (c2 = 306), making real-time identification inherently difficult.*
+
+#### 2. Surface Identification — Live Classification
+
+![Surface identification results](reports/plots/13_unlabeled_evaluation.png)
+
+*Panel 1: Fitted friction curves vs real data (one example per surface). Panel 2: Parameter space scatter plot with markers (○ = correct classification, ✕ = misclassified). Panel 3: Per-surface accuracy metrics.*
+
+#### 3. Classification Performance Metrics
+
+![Classification metrics: F1, Precision, Recall](reports/plots/14_classification_metrics.png)
+
+*Per-surface F1 score, precision, and recall. Average F1 = 0.86 with proper train/test split by simulation ID (no data leakage).*
+
+---
+
+### Robustness & Methodology (2 plots)
+
+#### 4. Noise Robustness — Ice & Snow Focus
+
+![F1 score vs noise level](reports/plots/15_robustness_noise_sweep.png)
+
+*Classifier performance as measurement noise (σ_μ) increases from realistic (0.01) to extreme (0.10). Snow and ice remain above 0.80 F1 even with 5% sensor noise, validating iterative reweighting approach.*
+
+#### 5. Model Comparison — Burckhardt + Gaussian Process
+
+![Method comparison across surfaces](reports/plots/02_model_comparison.png)
+
+*Prediction error (RMSE) for three regression methods: Burckhardt NLS (default), Gaussian Process (for ice/snow), Neural Network (data-hungry). Burckhardt NLS is fastest and most data-efficient.*
+
+---
+
 ## Technical Reference
 
 ### Burckhardt Surface Parameters (typical values)
