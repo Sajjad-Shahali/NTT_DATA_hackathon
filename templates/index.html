@@ -263,10 +263,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 <nav class="nav">
   <div class="nav-brand">
     <div class="nav-dot"></div>
-    <span class="nav-title">Friction-ID Live</span>
+    <span class="nav-title">Friction Identification Live</span>
   </div>
   <div class="nav-badge">NTT DATA BEST 2026</div>
-  <a class="nav-cta" href="/dashboard">▶ Live Dashboard</a>
 </nav>
 
 <div class="container">
@@ -307,8 +306,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
     </div>
   </div>
   <div class="cta-wrap">
-    <a class="cta-btn" href="/dashboard">▶ &nbsp;Start Live Demo</a>
-    <span class="cta-sub">Replaying friction_data_full.csv · 48 MATLAB simulations · 100 ms / sample</span>
+    <a class="cta-btn" href="https://github.com/Sajjad-Shahali/NTT_DATA_hackathon" target="_blank">↗ &nbsp;View on GitHub</a>
+    <span class="cta-sub">48 MATLAB simulations · 274,667 frames · Burckhardt NLS + ESC gradient identification</span>
   </div>
 </section>
 
@@ -523,7 +522,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 <section class="section">
   <div class="section-label">Robustness Comparison</div>
   <div class="section-title">Classifier Variants vs Noise</div>
-  <p class="section-sub">Monte Carlo simulation (100 batches × 8 σ levels) comparing four classifier strategies. Computed in-browser — click Run to start.</p>
+  <p class="section-sub">Monte Carlo simulation (60 batches × 8 σ levels × 2 axes) comparing four classifier strategies. Computed in-browser — click Run to start.</p>
   <div class="rob-legend">
     <div class="rob-leg-item"><div class="rob-leg-line" style="background:#6366f1"></div>Baseline (batch=50, 3D NN)</div>
     <div class="rob-leg-item"><div class="rob-leg-line" style="background:#34d399"></div>Large batch (batch=100)</div>
@@ -702,7 +701,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 </div>
 
 <footer class="footer">
-  <span>© 2026 NTT DATA BEST Hackathon · <a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a> · Friction-ID Live</span>
+  <span>© 2026 NTT DATA BEST Hackathon · <a href="https://www.polito.it/" target="_blank">Politecnico di Torino</a> · Friction Identification Live</span>
   <div style="display:flex;gap:18px;align-items:center;">
     <span>ESC Gradient · Burckhardt NLS · Three.js</span>
     <span style="color:var(--border2)">·</span>
@@ -779,20 +778,34 @@ const ROB_SURFS = [
   {c1:0.1946, c2:94.13, c3:0.0646, label:'Snow'},
 ];
 const ROB_SIGMAS = [0.000, 0.005, 0.010, 0.020, 0.030, 0.050, 0.070, 0.100];
-const ROB_BATCHES_PER_SIGMA = 100;
+const ROB_BATCHES_PER_SIGMA = 60; // 60÷3 surfaces = 20 per surface — fast enough in-browser
 
-// Burckhardt NLS grid-search (reuse burckhardtFit from CSV section)
-function robFit(slips, mus) { return burckhardtFit(slips, mus); }
+// NLS fit — inline grid search so it stays self-contained
+function robFit(slips, mus) {
+  const seeds=[[1.28,24,0.52],[0.86,34,0.35],[0.19,94,0.065]];
+  let best=[0.86,34,0.35], bestMSE=Infinity;
+  seeds.forEach(([sc1,sc2,sc3])=>{
+    [0.7,1.0,1.3].forEach(f1=>[0.7,1.0,1.3].forEach(f2=>[0.7,1.0,1.3].forEach(f3=>{
+      const [c1,c2,c3]=[sc1*f1,sc2*f2,sc3*f3];
+      let mse=0;
+      slips.forEach((s,i)=>{const p=c1*(1-Math.exp(-c2*Math.abs(s)))-c3*Math.abs(s);mse+=(p-mus[i])**2;});
+      mse/=slips.length;
+      if(mse<bestMSE){bestMSE=mse;best=[c1,c2,c3];}
+    })));
+  });
+  return best;
+}
 
-// 3D nearest-neighbour classify
+// 3D nearest-neighbour classify (Dry/Wet/Snow only — same as CSV classifier)
 function robClassify3D(c1, c2, c3) { return classifyCSV(c1, c2, c3); }
 
-// c2-only classify
+// c2-only 1D classify — uses absolute distance, normalised by full c2 range
 function robClassifyC2(c2) {
+  const range = 94.13 - 23.99; // span of known surfaces
   const dists = {
-    'Dry asphalt': Math.abs(c2 - 23.99) / 70.14,
-    'Wet asphalt': Math.abs(c2 - 33.82) / 70.14,
-    'Snow':        Math.abs(c2 - 94.13) / 70.14,
+    'Dry asphalt': Math.abs(c2 - 23.99) / range,
+    'Wet asphalt': Math.abs(c2 - 33.82) / range,
+    'Snow':        Math.abs(c2 - 94.13) / range,
   };
   return Object.entries(dists).sort((a,b)=>a[1]-b[1])[0][0];
 }
@@ -855,24 +868,28 @@ function runRobustness() {
   const btn = document.getElementById('rob-run-btn');
   const status = document.getElementById('rob-status');
   btn.disabled = true; btn.textContent = 'Computing…';
-  status.textContent = 'Running Monte Carlo (this takes ~10s)…';
+  status.textContent = 'Running Monte Carlo…';
 
-  setTimeout(() => {
+  // Yield to browser so button state renders, then run heavy computation
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     const muCurves = [], sCurves = [];
+    let vi = 0;
     VARIANTS.forEach(v => {
-      const muRow = ROB_SIGMAS.map(s => robEvalVariant(s,    0,    v.batch, v.classify, v.vote));
-      const sRow  = ROB_SIGMAS.map(s => robEvalVariant(0,    s,    v.batch, v.classify, v.vote));
+      status.textContent = 'Variant ' + (++vi) + ' / ' + VARIANTS.length + ' — ' + v.name;
+      const muRow = ROB_SIGMAS.map(s => robEvalVariant(s, 0, v.batch, v.classify, v.vote));
+      const sRow  = ROB_SIGMAS.map(s => robEvalVariant(0, s, v.batch, v.classify, v.vote));
       muCurves.push(muRow);
       sCurves.push(sRow);
     });
     robResults = {mu: muCurves, s: sCurves};
-    drawRobPlot('rob-canvas-mu', robResults.mu, 'σ_μ');
-    drawRobPlot('rob-canvas-s',  robResults.s,  'σ_s');
+    drawRobPlot('rob-canvas-mu', robResults.mu, 'σ_μ (friction noise)');
+    drawRobPlot('rob-canvas-s',  robResults.s,  'σ_s (slip noise)');
     fillRobTable(robResults.mu);
     document.getElementById('rob-table-wrap').style.display = '';
     btn.disabled = false; btn.textContent = '↺ Re-run';
-    status.textContent = 'Done — ' + ROB_SURFS.length*Math.floor(ROB_BATCHES_PER_SIGMA/ROB_SURFS.length)*ROB_SIGMAS.length*VARIANTS.length + ' batches evaluated';
-  }, 50);
+    const totalBatches = ROB_SURFS.length * Math.floor(ROB_BATCHES_PER_SIGMA/ROB_SURFS.length) * ROB_SIGMAS.length * VARIANTS.length * 2;
+    status.textContent = 'Done — ' + totalBatches + ' batches evaluated';
+  }));
 }
 
 function drawRobPlot(canvasId, curves, xLabel) {
