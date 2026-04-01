@@ -7,3 +7,14 @@ rules/use_case_template.md
 /.superpowers
 /__pycache__
 reports/project_handoff.md
+deliverables/executive_proposal.md
+deliverables/presentation_transcript_8min.md
+deliverables/prioritization_matrix.md
+deliverables/UC_001_friction_identification.md
+deliverables/UC_002_requirements_traceability.md
+deliverables/UC_003_code_migration_review.md
+deliverables/UC_004_synthetic_test_data.md
+TRAIN_COMMANDS.sh
+TRAIN_FIX_SUMMARY.md
+QUICK_TRAIN.sh
+ANALYSIS_REPORT.md
