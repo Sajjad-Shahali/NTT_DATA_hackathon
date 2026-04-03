@@ -1,6 +1,5 @@
 # Real-Time Tire-Road Friction Identification
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-brightgreen.svg)](https://sajjad-shahali.github.io/NTT_DATA_hackathon/friction-demo.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776ab.svg)](https://www.python.org/)
 [![NumPy](https://img.shields.io/badge/NumPy-1.24%2B-013243.svg)](https://numpy.org/)
@@ -13,6 +12,14 @@
 **NTT DATA BEST Hackathon 2026 · Politecnico di Torino · Team 24**
 
 A real-time tire-road friction identification system using an Extremum Seeking Control (ESC) gradient-based algorithm. The system continuously estimates Burckhardt friction model parameters from live wheel slip and friction measurements, enabling optimal slip tracking for maximum braking and traction force.
+
+---
+
+## Live Demo
+
+> **Try it now:** [sajjad-shahali.github.io/NTT_DATA_hackathon/friction-demo.html](https://sajjad-shahali.github.io/NTT_DATA_hackathon/friction-demo.html)
+
+An interactive in-browser demo — no server required. Visualises the Burckhardt friction curves, runs the surface classifier live, and lets you explore the algorithm with your own data.
 
 ---
 
