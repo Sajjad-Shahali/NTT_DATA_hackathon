@@ -6,6 +6,20 @@ A real-time tire-road friction identification system using an Extremum Seeking C
 
 ---
 
+## Visualizations
+
+### Burckhardt Friction Curves
+Parametric μ(s) curves for all four road surfaces (dry asphalt, wet asphalt, snow, ice) with peak friction and optimal slip markers.
+
+![Burckhardt Friction Curves](deliverables/Burckhardt%20Friction%20Curves.png)
+
+### Surface Classification Plot
+Classification results mapped against the Burckhardt friction curve — shows how the ESC identifier assigns each measurement batch to the correct surface type.
+
+![Surface Classification Plot](deliverables/plot.png)
+
+---
+
 ## Overview
 
 The core algorithm is a three-layer identifier (`ESCTwoPointID`) ported from MATLAB to Python. It is validated against 48 closed-loop braking simulations and exposed through an interactive web demo.
@@ -54,12 +68,7 @@ s_opt  = ln(c₁·c₂ / c₃) / c₂     # slip at peak friction
 
 ```
 NTT_DATA_hackathon/
-├── app.py                   # Flask server — landing page + /api/classify
-├── templates/
-│   └── index.html           # Interactive demo page (in-browser NLS, plots, literature)
-├── static/img/              # Team member photos
 ├── hackaton_id.py           # ESCTwoPointID — Python port of MATLAB identifier
-├── hackaton_id.m.txt        # Original MATLAB implementation (reference, do not edit)
 ├── predict_mu.py            # Offline μ(s) prediction — NLS vs GP vs NN comparison
 ├── preprocess.py            # Raw CSV → prepared_friction.csv pipeline
 ├── make_plots.py            # Regenerate all presentation plots (01–05)
@@ -68,19 +77,22 @@ NTT_DATA_hackathon/
 ├── plot_burckhardt_vs_real.py # c_matrix curves vs real scatter (plots 11–12)
 ├── evaluate_unlabeled.py    # Surface ID from unlabeled (slip,μ) — plot 13
 ├── eval_classification.py   # F1 / Precision / Recall evaluation — plot 14
+├── eval_robustness.py       # Monte Carlo robustness comparison across classifier variants
 ├── src/
 │   ├── burckhardt.py        # Burckhardt model math, surface presets, s_opt/μ_peak utils
-│   └── data_gen.py          # Synthetic (slip, μ) dataset generation
+│   ├── data_gen.py          # Synthetic (slip, μ) dataset generation
+│   └── *.m.txt              # Original MATLAB source files (reference, do not edit)
 ├── data/
 │   ├── raw/                 # friction_data_full.csv (export from MATLAB)
 │   └── synthetic/           # Auto-generated Burckhardt curves
 ├── models/                  # Saved fitted models
-├── reports/
-│   └── plots/               # Generated plots (01–14)
-├── deliverables/            # Hackathon submission documents
-├── rules/                   # Hackathon case study + use case template
+├── docs/
+│   └── friction-demo.html   # Static interactive demo page
+├── reports/                 # Team photos and generated plots
+├── deliverables/
+│   ├── plot.png             # Surface classification plot vs Burckhardt curves
+│   └── Burckhardt Friction Curves.png  # Burckhardt μ(s) curves for all surfaces
 ├── requirements.txt
-├── CLAUDE.md
 └── README.md
 ```
 
