@@ -1,0 +1,289 @@
+%% export_for_python_noisy.m
+%
+% Exports simulation data with a REALISTIC THREE-SOURCE NOISE MODEL applied
+% to the Burckhardt friction formula.
+%
+% Original (noiseless) formula used in the simulation:
+%   mu_res = c1*(1 - exp(-c2*s_res)) - c3*s_res
+%
+% New noisy formulation — three independent noise sources:
+%
+%   SOURCE 1 — Per-run parameter drift  (temperature, tyre wear)
+%     c1_run = c1_true * (1 + sigma_param * randn)
+%     c2_run = c2_true * (1 + sigma_param * randn)
+%     c3_run = c3_true * (1 + sigma_param * randn)
+%
+%   SOURCE 2 — Slip sensor noise  (wheel encoder quantisation + flex)
+%     s_meas = |s_true| + sigma_s * randn(n, 1)
+%
+%   SOURCE 3 — Friction measurement noise  (tyre force estimation)
+%     mu_true  = c1_run*(1-exp(-c2_run*s_meas)) - c3_run*s_meas
+%     mu_noisy = mu_true + sigma_mu * randn(n, 1)
+%
+% USAGE
+% -----
+%   >> run('run_validation_updated.m')    % generate test_results
+%   >> run('export_for_python_noisy.m')   % this file
+%
+% OUTPUT
+%   friction_data_noisy.csv  — same schema as friction_data_full.csv
+%                              but with mu_noisy and slip replaced by
+%                              the three-source noisy versions.
+%   Also exports the noise parameters used as a header comment in the file.
+%
+% PYTHON
+%   Copy to data/raw/friction_data_noisy.csv then:
+%     python preprocess.py --input data/raw/friction_data_noisy.csv \
+%                          --out   data/raw/prepared_friction_noisy.csv
+%     python eval_classification.py --csv data/raw/prepared_friction_noisy.csv
+%     python eval_robustness.py
+% ============================================================================
+
+rng(42);   % reproducible noise
+
+%% ── NOISE PARAMETERS  (tune these to match your target scenario) ───────────
+%
+%  Scenario               sigma_mu    sigma_s    sigma_param
+%  ─────────────────────  ─────────   ────────   ───────────
+%  Current simulation     0.0003      0.0002     0.00   (baseline — ideal)
+%  Realistic vehicle      0.0100      0.0020     0.05   (recommended default)
+%  Noisy sensor           0.0300      0.0050     0.05
+%  Severe / worn tyre     0.0500      0.0100     0.15
+%  Extreme test           0.1000      0.0200     0.20
+%
+sigma_mu    = 0.0100;   % std of additive noise on mu  (friction measurement)
+sigma_s     = 0.0020;   % std of additive noise on slip (encoder noise)
+sigma_param = 0.0500;   % relative std of per-run parameter drift  (0.05 = ±5%)
+
+fprintf('Noise model:\n');
+fprintf('  sigma_mu    = %.4f  (friction sensor noise)\n',  sigma_mu);
+fprintf('  sigma_s     = %.4f  (slip sensor noise)\n',      sigma_s);
+fprintf('  sigma_param = %.4f  (parameter drift per run)\n', sigma_param);
+fprintf('\n');
+
+%% ── Surface lookup table ────────────────────────────────────────────────────
+road_labels = {'Dry asphalt', 'Wet asphalt', 'Snow'};
+
+%               Dry      Wet      Snow
+c_matrix = [1.2801,  0.857,   0.1946;    % c1
+            23.99,   33.822,  94.129;    % c2
+            0.52,    0.347,   0.0646];   % c3
+
+%% ── Wheel-suffixed signal names ─────────────────────────────────────────────
+wheel_signals = {'s_measured', 'mu_measured', 's_probe', 'g_esc', ...
+                 'a_esc', 's_hat', 'alpha', 'dither'};
+wheels    = {'FL', 'RL'};
+alpha_thr = 1e-3;
+
+%% ── Main extraction loop ────────────────────────────────────────────────────
+n_tests  = numel(test_results);
+all_rows = cell(n_tests * 2, 1);
+n_chunks = 0;
+
+fprintf('Exporting %d test runs × 2 wheels with noisy formulation ...\n\n', n_tests);
+
+for i = 1:n_tests
+    tr = test_results(i);
+
+    if ~strcmp(tr.status, 'OK'), continue; end
+
+    sig = tr.signals;
+    if ~isfield(sig, 'time') || isempty(sig.time), continue; end
+
+    t = sig.time(:);
+    n = numel(t);
+    if n < 5, continue; end
+
+    road1  = tr.road_1;
+    road2  = tr.road_2;
+    t_mu   = tr.t_mu;
+    d_stop = tr.metrics.d_stop;
+    t_stop = tr.metrics.t_stop;
+
+    % Surface index per timestep
+    road_idx = road1 * ones(n, 1);
+    if road1 ~= road2 && t_mu < t(end)
+        idx_ch = find(t >= t_mu, 1, 'first');
+        if ~isempty(idx_ch)
+            road_idx(idx_ch:end) = road2;
+        end
+    end
+
+    % Nominal Burckhardt parameters — n×1 column vectors
+    c1_nom = c_matrix(1, road_idx(:)')';   % n×1
+    c2_nom = c_matrix(2, road_idx(:)')';
+    c3_nom = c_matrix(3, road_idx(:)')';
+
+    % ── SOURCE 1: Per-RUN parameter drift ─────────────────────────────────
+    % Each run gets a single random drift factor applied to all three params.
+    % This simulates tyre wear or temperature variation that is constant
+    % across one braking event but varies between runs.
+    if sigma_param > 0
+        drift_c1 = 1 + sigma_param * randn();   % scalar, same for whole run
+        drift_c2 = 1 + sigma_param * randn();
+        drift_c3 = 1 + sigma_param * randn();
+
+        % Clamp drifted params to physical bounds
+        c1_run = max(0.01, min(2.00, c1_nom * drift_c1));
+        c2_run = max(5.00, min(350.0, c2_nom * drift_c2));
+        c3_run = max(0.001, min(1.0,  c3_nom * drift_c3));
+    else
+        c1_run = c1_nom;
+        c2_run = c2_nom;
+        c3_run = c3_nom;
+    end
+
+    for w = 1:numel(wheels)
+        wh = wheels{w};
+
+        % Extract raw signals
+        sdata = struct();
+        for k = 1:numel(wheel_signals)
+            fname = [wheel_signals{k}, '_', wh];
+            if isfield(sig, fname) && ~isempty(sig.(fname))
+                raw = sig.(fname)(:);
+                col = NaN(n, 1);
+                len = min(numel(raw), n);
+                col(1:len) = raw(1:len);
+            else
+                col = NaN(n, 1);
+            end
+            sdata.(wheel_signals{k}) = col;
+        end
+
+        alpha_col  = sdata.alpha;
+        abs_active = double(~isnan(alpha_col) & alpha_col > alpha_thr);
+
+        % ── SOURCE 2: Slip sensor noise ────────────────────────────────────
+        %   s_meas = |s_true| + N(0, sigma_s)
+        slip_true = abs(sdata.s_measured);
+        slip_meas = slip_true + sigma_s * randn(n, 1);
+        slip_meas = max(0, slip_meas);   % physical: slip >= 0
+
+        % ── Compute true friction with drifted parameters ──────────────────
+        %   mu_true = c1_run*(1 - exp(-c2_run*s_meas)) - c3_run*s_meas
+        %   (using noisy slip, drifted params — this is what the sensor sees)
+        mu_true_noisy = c1_run .* (1 - exp(-c2_run .* slip_meas)) ...
+                        - c3_run .* slip_meas;
+
+        % ── SOURCE 3: Friction measurement noise ───────────────────────────
+        %   mu_noisy = mu_true_noisy + N(0, sigma_mu)
+        mu_noisy = mu_true_noisy + sigma_mu * randn(n, 1);
+        mu_noisy = max(0, mu_noisy);   % physical: mu >= 0
+
+        % ── Ground truth (nominal — for validation only) ───────────────────
+        %   Still computed with NOMINAL params and CLEAN slip
+        %   so Python can compare estimated vs true
+        mu_true_clean = c1_nom .* (1 - exp(-c2_nom .* slip_true)) ...
+                        - c3_nom .* slip_true;
+
+        ratio     = c1_nom .* c2_nom ./ c3_nom;
+        s_opt_col = NaN(n, 1);
+        has_peak  = (ratio > 1) & isfinite(ratio);
+        s_opt_col(has_peak) = log(ratio(has_peak)) ./ c2_nom(has_peak);
+        s_opt_col = min(max(s_opt_col, 0.001), 0.45);
+
+        mu_peak_col = c1_nom .* (1 - exp(-c2_nom .* s_opt_col)) ...
+                      - c3_nom .* s_opt_col;
+
+        surf_labels = road_labels(road_idx(:)')';
+
+        % ── Assemble table ─────────────────────────────────────────────────
+        %   mu_noisy  = noisy friction (3 noise sources applied)
+        %   slip      = noisy slip measurement
+        %   mu_true   = noiseless friction with nominal params (ground truth)
+        %   c1/c2/c3_true = nominal (not drifted) for reference
+        n_chunks = n_chunks + 1;
+        all_rows{n_chunks} = table( ...
+            repmat(tr.test_no,    n, 1), repmat(tr.case_no,    n, 1), ...
+            repmat({wh},          n, 1), repmat({tr.mode},     n, 1), ...
+            repmat({tr.scen_name},n, 1), repmat({tr.dist_name},n, 1), ...
+            repmat(road1,         n, 1), repmat(road2,         n, 1), ...
+            surf_labels,                t, ...
+            slip_meas,                  mu_noisy, ...
+            sdata.s_probe,              sdata.g_esc, ...
+            sdata.a_esc,                sdata.s_hat, ...
+            alpha_col,                  sdata.dither, ...
+            abs_active, ...
+            c1_nom,   c2_nom,   c3_nom, ...
+            mu_true_clean,  s_opt_col,  mu_peak_col, ...
+            repmat(d_stop,    n, 1), repmat(t_stop,  n, 1), ...
+            repmat(tr.T_front,n, 1), repmat(tr.T_rear,n, 1), ...
+            repmat(sigma_mu,     n, 1), ...
+            repmat(sigma_s,      n, 1), ...
+            repmat(sigma_param,  n, 1), ...
+            'VariableNames', { ...
+                'test_no',    'case_no',    'wheel',         'mode', ...
+                'scenario',   'dist_name',  'road_1',        'road_2', ...
+                'surface',    'time',       'slip',          'mu_noisy', ...
+                's_probe',    'g_esc',      'a_esc',         's_hat', ...
+                'alpha',      'dither',     'abs_active', ...
+                'c1_true',    'c2_true',    'c3_true', ...
+                'mu_true',    's_opt_true', 'mu_peak_true', ...
+                'd_stop',     't_stop',     'T_front',       'T_rear', ...
+                'sigma_mu',   'sigma_s',    'sigma_param'});
+
+        fprintf('  test %2d [%9s] %-14s road=%d->%d  n=%d  drift=[%.3f %.3f %.3f]\n', ...
+            tr.test_no, tr.mode, tr.scen_name, road1, road2, n, ...
+            drift_c1, drift_c2, drift_c3);
+    end
+end
+
+%% ── Concatenate ──────────────────────────────────────────────────────────
+fprintf('\nConcatenating %d chunks ...\n', n_chunks);
+T = vertcat(all_rows{1:n_chunks});
+
+%% ── Quality filter ───────────────────────────────────────────────────────
+valid_mask = T.slip     >= 0.002 & T.slip     <= 0.55  & ...
+             T.mu_noisy >= 0.0   & T.mu_noisy <= 2.5   & ...
+             isfinite(T.slip) & isfinite(T.mu_noisy);
+
+T_clean = T(valid_mask, :);
+fprintf('After quality filter: %d rows  (removed %d)\n\n', ...
+    height(T_clean), height(T) - height(T_clean));
+
+%% ── Summary ──────────────────────────────────────────────────────────────
+fprintf('%s\n', repmat('=', 1, 72));
+fprintf('  EXPORT SUMMARY  (noisy formulation)\n');
+fprintf('%s\n', repmat('=', 1, 72));
+fprintf('  Noise model applied:\n');
+fprintf('    mu_noisy = c1_run*(1-exp(-c2_run*s_meas)) - c3_run*s_meas\n');
+fprintf('               + N(0, %.4f)       [friction sensor]\n', sigma_mu);
+fprintf('    s_meas   = |s_true| + N(0, %.4f)         [slip sensor]\n', sigma_s);
+fprintf('    c_run    = c_nom * (1 + N(0, %.4f))      [param drift]\n', sigma_param);
+fprintf('\n  Rows    : %d\n', height(T_clean));
+fprintf('  Columns : %d  (3 extra: sigma_mu, sigma_s, sigma_param)\n\n', width(T_clean));
+
+for s = 1:numel(road_labels)
+    mask = strcmp(T_clean.surface, road_labels{s});
+    if ~any(mask), continue; end
+    fprintf('    %-20s  n=%7d  slip=[%.3f, %.3f]  mu=[%.3f, %.3f]\n', ...
+        road_labels{s}, sum(mask), ...
+        min(T_clean.slip(mask)), max(T_clean.slip(mask)), ...
+        min(T_clean.mu_noisy(mask)), max(T_clean.mu_noisy(mask)));
+end
+
+% Show noise impact: compare mu_noisy vs mu_true residuals
+residuals = abs(T_clean.mu_noisy - T_clean.mu_true);
+fprintf('\n  Noise impact (|mu_noisy - mu_true|):\n');
+fprintf('    mean = %.5f\n', mean(residuals));
+fprintf('    std  = %.5f\n', std(residuals));
+fprintf('    max  = %.5f\n', max(residuals));
+fprintf('    (original simulation had max = 0.0003)\n');
+fprintf('%s\n\n', repmat('=', 1, 72));
+
+%% ── Save ─────────────────────────────────────────────────────────────────
+out_file = sprintf('friction_data_noisy_smu%.4f_ss%.4f_sp%.4f.csv', ...
+                   sigma_mu, sigma_s, sigma_param);
+
+writetable(T_clean, out_file);
+fprintf('Saved: %s\n', out_file);
+fprintf('Size : %d rows x %d columns\n\n', height(T_clean), width(T_clean));
+
+fprintf('Copy to Python project and run:\n');
+fprintf('  python preprocess.py \\\n');
+fprintf('    --input data/raw/%s \\\n', out_file);
+fprintf('    --out   data/raw/prepared_friction_noisy.csv\n\n');
+fprintf('  python eval_classification.py \\\n');
+fprintf('    --csv data/raw/prepared_friction_noisy.csv\n\n');
+fprintf('  python eval_robustness.py\n\n');

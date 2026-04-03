@@ -1,0 +1,719 @@
+%% run_validation.m — Setup + 8×3 Validation
+% =========================================================================
+% Hierarchical Brake Control System — Full Validation
+%
+% 8 senaryo × 3 fren dağılımı × 2 mod = 48 simülasyon
+%
+% SENARYOLAR:
+%   1. Snow Low       — ABS gereksiz (peak altı)
+%   2. Snow High      — ABS gerekli (peak çok üstü)
+%   3. Dry High       — ABS gerekli
+%   4. Dry→Snow jump  — Logic3 tetiklemeli
+%   5. Snow→Dry jump  — deactivation olmalı
+%   6. Snow Border    — peak'in hemen üstü (edge case)
+%   7. Wet High       — üçüncü yüzey testi
+%   8. Wet→Snow jump  — farklı mu-jump kombinasyonu
+%
+% FREN DAĞILIMLARI:
+%   A) 60F/40R — EV standard
+%   B) 85F/15R — ön ağırlıklı
+%   C) 30F/70R — arka ağırlıklı (stres testi)
+%
+% KULLANIM: Doğrudan çalıştır, başka script'e gerek yok.
+% =========================================================================
+clc; clear all; close all;
+
+%% =============================================================
+%% PART A: WORKSPACE SETUP (from run_simulink.m)
+%% =============================================================
+
+%% 1. VEHICLE PARAMETERS
+run 'vehicle_parameters'
+import casadi.*
+
+%% 2. ROAD SURFACE — Burckhardt Coefficients
+c_matrix = [1.2801,  0.857,  0.1946;    % c1
+            23.99,   33.822, 94.129;     % c2
+            0.52,    0.347,  0.0646];    % c3
+
+surface_select = 3;
+c1 = c_matrix(1, surface_select);
+c2 = c_matrix(2, surface_select);
+c3 = c_matrix(3, surface_select);
+c_value_L = c_matrix(:, surface_select);
+c_value_R = c_matrix(:, surface_select);
+
+%% 3. BRAKING TORQUE (defaults — overridden per scenario)
+T_br_FL = 1200;
+T_br_FR = 1200;
+T_br_RL = 200;
+T_br_RR = 200;
+T_br_nominal_values_init = [T_br_FL; T_br_FR; T_br_RL; T_br_RR];
+
+T_max       = 5000;
+T_max_brake = [5000; 5000; 5000; 5000];
+
+%% 4. INITIAL CONDITIONS
+initial_velocity = 30;
+initial_beta     = 0;
+initial_yaw_rate = 0;
+r_stat_FL_init   = parameter.r_0;
+
+x_initial = [
+    initial_velocity;
+    initial_beta;
+    initial_yaw_rate;
+    initial_velocity / r_stat_FL_init;
+    initial_velocity / r_stat_FL_init;
+    initial_velocity / r_stat_FL_init;
+    initial_velocity / r_stat_FL_init;
+    0; 0; 0; 0;
+    0; 0;
+    0; 0;
+    0; 0;
+];
+
+%% 5. SLIP REFERENCES
+parameter.s_l_ref = -0.15;
+s_l_ref_L    = parameter.s_l_ref;
+s_l_ref_R    = parameter.s_l_ref;
+s_l_min_L    = -1;
+s_l_min_R    = -1;
+beta_ref     = 0;
+yaw_rate_ref = 0;
+
+%% 6. SUSPENSION INITIAL CONDITIONS
+z_state_initial     = 0;
+pitch_state_initial = 0;
+roll_state_initial  = 0;
+
+%% 7. SIMULINK BUS
+busInfo = Simulink.Bus.createObject(parameter);
+
+%% 8. QP1
+qp_Ts        = 1e-3;
+qp_slew_rate = 500000;
+qp_wrapper   = QPSolverWrapper();
+
+%% 9. QP2
+qp2_Ts        = 1e-3;
+qp2_slew_rate = 50000;
+qp2_wrapper   = QP2SolverWrapper();
+
+Q_yaw_high = 1e-2;
+Q_yaw_low  = 1e-6;
+
+%% 10. ESC
+esc_parameters = [
+    0.02;       % (1)  a_max
+    0.005;      % (2)  a_min
+    10;         % (3)  k_a
+    300;        % (4)  omega
+    10;         % (5)  k_esc
+    60;         % (6)  omega_h
+    100;        % (7)  omega_l
+    -0.5;       % (8)  s_min
+    -0.001;     % (9)  s_max
+    0.5;        % (10) ds_max_per_sec
+    0.1;        % (11) peak_cross_scale
+];
+
+omega_esc = esc_parameters(4);
+a_max     = esc_parameters(1);
+
+%% 11. IDENTIFIER
+id_params = [
+    8;          % (1)  buf_size
+    10;         % (2)  (reserved)
+    0.008;      % (3)  fark_threshold
+    0.05;       % (4)  (reserved)
+    0.3;        % (5)  t_start
+    0.01;       % (6)  c1_min
+    5.0;        % (7)  c1_max
+    1;          % (8)  c2_min
+    200;        % (9)  c2_max
+    0.0001;     % (10) c3_min
+    5.0;        % (11) c3_max
+    0.175;      % (12) mu_buf_init
+    0.165;      % (13) s_buf_init
+    1e-6;       % (14) brent_tol
+    50;         % (15) brent_iter
+];
+
+%% 12. ALPHA
+k_conf    = 5;
+tau_alpha = 0.2;
+
+%% 13. ABS ACTIVATION
+activation_params = [
+    250;        % (1)  k1_param          [UNUSED — Logic1 disabled]
+    0.9;        % (2)  J_w               [UNUSED — Logic1 disabled]
+    0.90;       % (3)  threshold_mu      [UNUSED — replaced by algebraic]
+    0.60;       % (4)  hysteresis_ratio   deact Yol1 hysteresis
+    0.01;       % (5)  tau_smooth         derivative LPF [s]
+    0.5;        % (6)  dmu_noise_floor    Logic3 noise floor [1/s]
+    0.3;        % (7)  safety_factor      [UNUSED — Logic1 disabled]
+    0.06;       % (8)  T_min_active       minimum ABS on-time [s]
+    0.0;        % (9)  t_start            activation delay [s]
+    2.0;        % (10) v_w_min            min velocity [m/s]
+    0.6;        % (11) alpha_deact_high   [UNUSED — deact quadrant-free]
+    0.3;        % (12) alpha_deact_low    deact alpha gate
+    0.5;        % (13) conv_threshold     STSMC divergence threshold [1/s]
+    0.02;       % (14) s_error_min        min |s_error| for divergence
+    0.005;      % (15) tau_conv           convergence LPF [s]
+    0.50;       % (16) deact_slip_factor  Yol2 slip margin
+    0.40;       % (17) alpha_gate         Logic2 alpha gate
+    0.85;       % (18) threshold_base     Logic2 base threshold
+    5.0;        % (19) k_conf_act         Logic2 confidence decay
+    0.90;       % (20) T_peak_threshold   Yol3 torque margin
+    150;        % (21) decel_threshold    Logic1 wheel decel threshold
+];
+
+%% 14. LYAPUNOV SWITCH
+switch_params = [
+    1.0; 1.0; 0.1; 0.5; 0.3; 0.05; 2.0; 0.01; 0.1; 0.5; 0; 0;
+];
+
+%% 15. NMPC — Build Solver
+Ts = 0.01;
+N  = 10;
+
+U_previous = zeros(8, 1);
+X_prev     = zeros(17, 1);
+U_prev     = zeros(8, 1);
+use_qp     = 1;
+alpha_dis  = 1;
+
+pure_nmpc(x_initial, beta_ref, yaw_rate_ref, ...
+          T_br_nominal_values_init, c_value_L, c_value_R, ...
+          s_l_min_L, s_l_min_R, s_l_ref_L, s_l_ref_R, ...
+          X_prev, U_prev, parameter);
+
+%% Ek değişkenler (Simulink workspace)
+road_1 = 3;
+road_2 = 3;
+t_mu   = 100;
+
+s_l_ref_1 = -0.17;
+s_l_ref_2 = -0.13;
+s_l_min   = -1;
+
+s_hat_initial = -0.1;
+
+c1_initial_estiamtion = c_matrix(1, 1);
+c2_initial_estiamtion = c_matrix(2, 1);
+c3_initial_estiamtion = c_matrix(3, 1);
+
+Ts_stsmc = 1e-3;
+Ts_qp    = 1e-3;
+Ts_esc   = 1e-3;
+Ts_activation = 1e-3;
+Ts_id    = 0.01;
+
+initial_wFL = initial_velocity / r_stat_FL_init;
+initial_wFR = initial_velocity / r_stat_FL_init;
+initial_wRL = initial_velocity / r_stat_FL_init;
+initial_wRR = initial_velocity / r_stat_FL_init;
+
+F_z_nominal = parameter.m * parameter.g / 4;
+T_pert_budget_coef = 0.05;
+C_N = 2;
+T_sim = 15;
+
+fprintf('Workspace hazir.\n');
+
+%% =============================================================
+%% PART B: VALIDATION SCENARIOS
+%% =============================================================
+
+%% Fren Dağılımları
+distributions = struct();
+
+distributions(1).name    = '60F/40R';
+distributions(1).f_ratio = 0.60;
+distributions(1).r_ratio = 0.40;
+
+distributions(2).name    = '85F/15R';
+distributions(2).f_ratio = 0.85;
+distributions(2).r_ratio = 0.15;
+
+distributions(3).name    = '30F/70R';
+distributions(3).f_ratio = 0.30;
+distributions(3).r_ratio = 0.70;
+
+%% Senaryolar
+% Peak torque referansları (v=30m/s, per axle, statik F_z):
+%   Snow: mu=0.19, F_z_axle≈8950N → T_peak_axle = 0.19*8950*0.33 = 561 Nm
+%   Wet:  mu=0.85, F_z_axle≈8950N → T_peak_axle = 0.85*8950*0.33 = 2510 Nm
+%   Dry:  mu=1.28, F_z_axle≈8950N → T_peak_axle = 1.28*8950*0.33 = 3781 Nm
+base_scenarios = struct();
+
+% --- 1: Snow, düşük fren (ABS gereksiz) ---
+base_scenarios(1).name       = 'Snow Low';
+base_scenarios(1).road_1     = 3;
+base_scenarios(1).road_2     = 3;
+base_scenarios(1).t_mu       = 100;
+base_scenarios(1).T_total    = 500;     % < 561 → safe
+base_scenarios(1).expect_abs = false;
+
+% --- 2: Snow, yüksek fren (ABS gerekli) ---
+base_scenarios(2).name       = 'Snow High';
+base_scenarios(2).road_1     = 3;
+base_scenarios(2).road_2     = 3;
+base_scenarios(2).t_mu       = 100;
+base_scenarios(2).T_total    = 1200;    % >> 561 → lockup
+base_scenarios(2).expect_abs = true;
+
+% --- 3: Dry, yüksek fren (ABS gerekli) ---
+base_scenarios(3).name       = 'Dry High';
+base_scenarios(3).road_1     = 1;
+base_scenarios(3).road_2     = 1;
+base_scenarios(3).t_mu       = 100;
+base_scenarios(3).T_total    = 5600;    % > 3781 → lockup
+base_scenarios(3).expect_abs = true;
+
+% --- 4: Dry → Snow mu-jump ---
+base_scenarios(4).name       = 'Dry->Snow';
+base_scenarios(4).road_1     = 1;
+base_scenarios(4).road_2     = 3;
+base_scenarios(4).t_mu       = 1.0;
+base_scenarios(4).T_total    = 1200;    % safe on dry, lockup on snow
+base_scenarios(4).expect_abs = true;
+
+% --- 5: Snow → Dry mu-jump ---
+base_scenarios(5).name       = 'Snow->Dry';
+base_scenarios(5).road_1     = 3;
+base_scenarios(5).road_2     = 1;
+base_scenarios(5).t_mu       = 1.0;
+base_scenarios(5).T_total    = 1200;    % lockup on snow, safe on dry
+base_scenarios(5).expect_abs = true;
+
+% --- 6: Snow borderline (peak'in %7 üstü — edge case) ---
+base_scenarios(6).name       = 'Snow Border';
+base_scenarios(6).road_1     = 3;
+base_scenarios(6).road_2     = 3;
+base_scenarios(6).t_mu       = 100;
+base_scenarios(6).T_total    = 600;     % 561*1.07 ≈ 600 → barely over peak
+base_scenarios(6).expect_abs = true;
+
+% --- 7: Wet, yüksek fren ---
+base_scenarios(7).name       = 'Wet High';
+base_scenarios(7).road_1     = 2;
+base_scenarios(7).road_2     = 2;
+base_scenarios(7).t_mu       = 100;
+base_scenarios(7).T_total    = 3000;    % > 2510 → lockup
+base_scenarios(7).expect_abs = true;
+
+% --- 8: Wet → Snow mu-jump ---
+base_scenarios(8).name       = 'Wet->Snow';
+base_scenarios(8).road_1     = 2;
+base_scenarios(8).road_2     = 3;
+base_scenarios(8).t_mu       = 1.0;
+base_scenarios(8).T_total    = 1200;    % safe on wet, lockup on snow
+base_scenarios(8).expect_abs = true;
+
+%% Simülasyon parametreleri
+v_stop_threshold   = 2.5;
+activation_t_start = 0.0;
+
+orig_activation_params = activation_params;
+
+n_dist = length(distributions);
+n_scen = length(base_scenarios);
+all_results = struct();
+result_idx = 0;
+
+
+%% =============================================================
+%% PART C: KOŞTURMA DÖNGÜSÜ
+%% =============================================================
+
+total_sims   = n_dist * n_scen * 2;
+sim_count    = 0;
+case_count   = 0;
+t_start_val  = tic;
+
+% Kaydedilecek sinyaller (FL ve RL icin)
+base_signal_names = {'mu_measured', 's_measured', 's_probe', 'g_esc', 'a_esc', 's_hat', 'alpha', 'dither'};
+wheel_tags        = {'FL', 'RL'};
+
+% Test bazli: test_results(k) = k'inci kosunun tum datasi
+% Case bazli: all_results(m) = ayni senaryonun Framework + NoABS sonuclari
+
+test_results = repmat(struct( ...
+    'test_no',          [], ...
+    'case_no',          [], ...
+    'dist_idx',         [], ...
+    'dist_name',        '', ...
+    'scen_idx',         [], ...
+    'scen_name',        '', ...
+    'road_1',           [], ...
+    'road_2',           [], ...
+    't_mu',             [], ...
+    'mode',             '', ...
+    'abs_enabled',      [], ...
+    'T_front',          [], ...
+    'T_rear',           [], ...
+    'expect_abs',       [], ...
+    'signals',          struct(), ...
+    'metrics',          struct(), ...
+    'status',           '', ...
+    'error_message',    ''), total_sims, 1);
+
+all_results = repmat(struct( ...
+    'case_no',          [], ...
+    'dist_idx',         [], ...
+    'dist_name',        '', ...
+    'scen_idx',         [], ...
+    'scen_name',        '', ...
+    'road_1',           [], ...
+    'road_2',           [], ...
+    't_mu',             [], ...
+    'T_front',          [], ...
+    'T_rear',           [], ...
+    'expect_abs',       [], ...
+    'framework_test_no',[], ...
+    'noabs_test_no',    [], ...
+    'signals_fw',       struct(), ...
+    'signals_noabs',    struct(), ...
+    'd_fw',             NaN, ...
+    'd_noabs',          NaN, ...
+    't_fw',             NaN, ...
+    't_noabs',          NaN, ...
+    'stopped_fw',       false, ...
+    'stopped_noabs',    false, ...
+    'abs_activated',    NaN, ...
+    'abs_time_FL',      NaN, ...
+    'abs_time_RL',      NaN, ...
+    'min_slip_fw',      NaN, ...
+    'min_slip_noabs',   NaN, ...
+    'framework_status', '', ...
+    'noabs_status',     '', ...
+    'framework_error',  '', ...
+    'noabs_error',      ''), n_dist * n_scen, 1);
+
+for d = 1:n_dist
+    dist = distributions(d);
+    
+    for s = 1:n_scen
+        scen = base_scenarios(s);
+        case_count = case_count + 1;
+        
+        T_front_pw = scen.T_total * dist.f_ratio / 2;
+        T_rear_pw  = scen.T_total * dist.r_ratio / 2;
+        
+        % Case metadata (Framework + NoABS ayni case altinda tutulur)
+        all_results(case_count).case_no    = case_count;
+        all_results(case_count).dist_idx   = d;
+        all_results(case_count).dist_name  = dist.name;
+        all_results(case_count).scen_idx   = s;
+        all_results(case_count).scen_name  = scen.name;
+        all_results(case_count).road_1     = scen.road_1;
+        all_results(case_count).road_2     = scen.road_2;
+        all_results(case_count).t_mu       = scen.t_mu;
+        all_results(case_count).T_front    = T_front_pw;
+        all_results(case_count).T_rear     = T_rear_pw;
+        all_results(case_count).expect_abs = scen.expect_abs;
+        
+        for abs_mode = [1, 0]
+            sim_count = sim_count + 1;
+            mode_str  = iif(abs_mode == 1, 'Framework', 'NoABS');
+            fprintf('[%2d/%2d] Case=%2d | Dist=%s | Scen=%s | Mode=%s ... ', ...
+                sim_count, total_sims, case_count, dist.name, scen.name, mode_str);
+            
+            % Parametre override
+            road_1 = scen.road_1;
+            road_2 = scen.road_2;
+            t_mu   = scen.t_mu;
+            
+            T_br_FL = T_front_pw;
+            T_br_FR = T_front_pw;
+            T_br_RL = T_rear_pw;
+            T_br_RR = T_rear_pw;
+            T_br_nominal_values_init = [T_br_FL; T_br_FR; T_br_RL; T_br_RR];
+            
+            activation_params(9) = iif(abs_mode == 1, activation_t_start, 9999);
+            
+            % Test metadata
+            test_results(sim_count).test_no      = sim_count;
+            test_results(sim_count).case_no      = case_count;
+            test_results(sim_count).dist_idx     = d;
+            test_results(sim_count).dist_name    = dist.name;
+            test_results(sim_count).scen_idx     = s;
+            test_results(sim_count).scen_name    = scen.name;
+            test_results(sim_count).road_1       = scen.road_1;
+            test_results(sim_count).road_2       = scen.road_2;
+            test_results(sim_count).t_mu         = scen.t_mu;
+            test_results(sim_count).mode         = mode_str;
+            test_results(sim_count).abs_enabled  = logical(abs_mode);
+            test_results(sim_count).T_front      = T_front_pw;
+            test_results(sim_count).T_rear       = T_rear_pw;
+            test_results(sim_count).expect_abs   = scen.expect_abs;
+            
+            if abs_mode == 1
+                all_results(case_count).framework_test_no = sim_count;
+            else
+                all_results(case_count).noabs_test_no = sim_count;
+            end
+            
+            try
+                out = sim('nmpc_simulink.slx');
+                
+                [t_vec, v_cog, ok_v] = get_out_signal(out, 'v_cog');
+                if ~ok_v
+                    error('out.v_cog bulunamadi. Stopping distance hesaplanamiyor.');
+                end
+                
+                run_data = struct();
+                run_data.time = t_vec;
+                
+                % FL ve RL sinyallerini kaydet
+                for iSig = 1:numel(base_signal_names)
+                    for iWh = 1:numel(wheel_tags)
+                        full_name = sprintf('%s_%s', base_signal_names{iSig}, wheel_tags{iWh});
+                        [sig_time, sig_data, sig_ok] = get_out_signal(out, full_name);
+                        if sig_ok
+                            run_data.(full_name) = sig_data;
+                            run_data.([full_name, '_time']) = sig_time;
+                        else
+                            run_data.(full_name) = [];
+                            run_data.([full_name, '_time']) = [];
+                        end
+                    end
+                end
+                
+                metrics = compute_run_metrics(t_vec, v_cog, run_data, v_stop_threshold);
+                
+                test_results(sim_count).signals       = run_data;
+                test_results(sim_count).metrics       = metrics;
+                test_results(sim_count).status        = 'OK';
+                test_results(sim_count).error_message = '';
+                
+                if abs_mode == 1
+                    all_results(case_count).signals_fw      = run_data;
+                    all_results(case_count).d_fw            = metrics.d_stop;
+                    all_results(case_count).t_fw            = metrics.t_stop;
+                    all_results(case_count).stopped_fw      = metrics.stopped;
+                    all_results(case_count).abs_activated   = metrics.abs_ever;
+                    all_results(case_count).abs_time_FL     = metrics.abs_time_FL;
+                    all_results(case_count).abs_time_RL     = metrics.abs_time_RL;
+                    all_results(case_count).min_slip_fw     = metrics.min_slip;
+                    all_results(case_count).framework_status= 'OK';
+                    all_results(case_count).framework_error = '';
+                else
+                    all_results(case_count).signals_noabs   = run_data;
+                    all_results(case_count).d_noabs         = metrics.d_stop;
+                    all_results(case_count).t_noabs         = metrics.t_stop;
+                    all_results(case_count).stopped_noabs   = metrics.stopped;
+                    all_results(case_count).min_slip_noabs  = metrics.min_slip;
+                    all_results(case_count).noabs_status    = 'OK';
+                    all_results(case_count).noabs_error     = '';
+                end
+                
+                fprintf('OK | d=%.2f m | t=%.2f s\n', metrics.d_stop, metrics.t_stop);
+                
+            catch ME
+                test_results(sim_count).signals       = struct();
+                test_results(sim_count).metrics       = struct();
+                test_results(sim_count).status        = 'ERROR';
+                test_results(sim_count).error_message = ME.message;
+                
+                if abs_mode == 1
+                    all_results(case_count).framework_status = 'ERROR';
+                    all_results(case_count).framework_error  = ME.message;
+                else
+                    all_results(case_count).noabs_status = 'ERROR';
+                    all_results(case_count).noabs_error  = ME.message;
+                end
+                
+                fprintf('HATA: %s\n', ME.message);
+            end
+        end
+    end
+end
+
+%% Restore originals
+activation_params = orig_activation_params;
+total_elapsed = toc(t_start_val);
+
+%% =============================================================
+%% PART D: SONUC TABLOSU
+%% =============================================================
+fprintf('\n\n');
+fprintf('================================================================================================================================================\n');
+fprintf('                                              VALIDATION RESULTS — CASE BAZLI OZET                                                    \n');
+fprintf('================================================================================================================================================\n');
+fprintf('%4s | %4s | %4s | %-8s | %-12s | %6s | %6s | %9s | %9s | %7s | %7s | %6s | %6s\n', ...
+    'Case', 'FW', 'NA', 'Dist', 'Scenario', 'F[Nm]', 'R[Nm]', 'NoABS[m]', 'FW[m]', 'Impr%', 'MinS_FW', 'ABSAct', 'Expect');
+fprintf('------------------------------------------------------------------------------------------------------------------------------------------------\n');
+
+for i = 1:numel(all_results)
+    r = all_results(i);
+    
+    if isfinite(r.d_noabs) && isfinite(r.d_fw) && r.d_noabs > 0
+        improvement = 100 * (r.d_noabs - r.d_fw) / r.d_noabs;
+    else
+        improvement = NaN;
+    end
+    
+    if isnan(r.abs_activated)
+        abs_str = '???';
+    elseif r.abs_activated
+        abs_str = 'YES';
+    else
+        abs_str = 'NO';
+    end
+    
+    exp_str = iif(r.expect_abs, 'YES', 'NO');
+    
+    fprintf('%4d | %4d | %4d | %-8s | %-12s | %6.0f | %6.0f | %9.2f | %9.2f | %6.1f%% | %7.3f | %6s | %6s\n', ...
+        r.case_no, r.framework_test_no, r.noabs_test_no, r.dist_name, r.scen_name, ...
+        r.T_front, r.T_rear, r.d_noabs, r.d_fw, improvement, r.min_slip_fw, abs_str, exp_str);
+end
+
+fprintf('================================================================================================================================================\n');
+fprintf('v0=%dm/s | v_stop=%.1fm/s | act_t_start=%.1fs | T_sim=%ds | Total: %.1fs\n', ...
+    initial_velocity, v_stop_threshold, activation_t_start, T_sim, total_elapsed);
+fprintf('================================================================================================================================================\n');
+
+%% Kullanım notları
+fprintf('\nERISIM ORNEKLERI:\n');
+fprintf('  test_results(17).signals.mu_measured_FL\n');
+fprintf('  test_results(17).signals.s_hat_RL\n');
+fprintf('  test_results(17).metrics.d_stop\n');
+fprintf('  all_results(5).signals_fw.alpha_FL\n');
+fprintf('  all_results(5).signals_noabs.dither_RL\n');
+fprintf('  all_results(5).framework_test_no / noabs_test_no ile test numarasini gorebilirsin.\n');
+
+%% Kaydet
+save('validation_results.mat', 'all_results', 'test_results', 'distributions', 'base_scenarios');
+fprintf('\nSonuclar validation_results.mat olarak kaydedildi.\n');
+fprintf('Toplam %d simulasyon kosuldu (%d dagilim x %d senaryo x 2 mod) — %.1f dakika.\n', ...
+    total_sims, n_dist, n_scen, total_elapsed / 60);
+
+%% =============================================================
+%% LOCAL FUNCTIONS
+%% =============================================================
+function out_val = iif(cond, valTrue, valFalse)
+if cond
+    out_val = valTrue;
+else
+    out_val = valFalse;
+end
+end
+
+function [t_vec, data_vec, ok] = get_out_signal(simOut, signal_name)
+% SimulationOutput icinden sinyali guvenli sekilde cek
+ok = false;
+t_vec = [];
+data_vec = [];
+
+try
+    sig = simOut.get(signal_name);
+catch
+    try
+        sig = simOut.(signal_name);
+    catch
+        return;
+    end
+end
+
+try
+    if isa(sig, 'timeseries')
+        t_vec = sig.Time;
+        data_vec = squeeze(sig.Data);
+        ok = true;
+        return;
+    end
+    
+    if isstruct(sig)
+        if isfield(sig, 'time') && isfield(sig, 'data')
+            t_vec = sig.time;
+            data_vec = squeeze(sig.data);
+            ok = true;
+            return;
+        end
+        if isfield(sig, 'Time') && isfield(sig, 'Data')
+            t_vec = sig.Time;
+            data_vec = squeeze(sig.Data);
+            ok = true;
+            return;
+        end
+    end
+    
+    if isobject(sig) && isprop(sig, 'Values')
+        vals = sig.Values;
+        if isa(vals, 'timeseries')
+            t_vec = vals.Time;
+            data_vec = squeeze(vals.Data);
+            ok = true;
+            return;
+        end
+    end
+catch
+    ok = false;
+    t_vec = [];
+    data_vec = [];
+end
+end
+
+function metrics = compute_run_metrics(t_vec, v_cog, run_data, v_stop_threshold)
+metrics = struct();
+
+t_vec = t_vec(:);
+v_cog = v_cog(:);
+
+idx_stop = find(v_cog < v_stop_threshold, 1, 'first');
+if isempty(idx_stop)
+    metrics.stopped = false;
+    metrics.t_stop  = t_vec(end);
+    metrics.d_stop  = trapz(t_vec, v_cog);
+else
+    metrics.stopped = true;
+    metrics.t_stop  = t_vec(idx_stop);
+    metrics.d_stop  = trapz(t_vec(1:idx_stop), v_cog(1:idx_stop));
+end
+
+slips = [];
+if isfield(run_data, 's_measured_FL') && ~isempty(run_data.s_measured_FL)
+    slips = [slips; run_data.s_measured_FL(:)]; %#ok<AGROW>
+end
+if isfield(run_data, 's_measured_RL') && ~isempty(run_data.s_measured_RL)
+    slips = [slips; run_data.s_measured_RL(:)]; %#ok<AGROW>
+end
+if isempty(slips)
+    metrics.min_slip = NaN;
+else
+    metrics.min_slip = min(slips, [], 'omitnan');
+end
+
+alpha_thr = 1e-3;
+metrics.abs_time_FL = compute_active_time(t_vec, get_struct_field(run_data, 'alpha_FL', []), alpha_thr);
+metrics.abs_time_RL = compute_active_time(t_vec, get_struct_field(run_data, 'alpha_RL', []), alpha_thr);
+metrics.abs_ever    = (metrics.abs_time_FL > 0) || (metrics.abs_time_RL > 0);
+end
+
+function active_time = compute_active_time(t_vec, signal_vec, thr)
+active_time = NaN;
+if isempty(signal_vec)
+    return;
+end
+
+signal_vec = signal_vec(:);
+n = min(numel(t_vec), numel(signal_vec));
+if n < 2
+    active_time = 0;
+    return;
+end
+
+mask = abs(signal_vec(1:n)) > thr;
+active_time = trapz(t_vec(1:n), double(mask));
+end
+
+function val = get_struct_field(s, field_name, default_val)
+if isfield(s, field_name)
+    val = s.(field_name);
+else
+    val = default_val;
+end
+end

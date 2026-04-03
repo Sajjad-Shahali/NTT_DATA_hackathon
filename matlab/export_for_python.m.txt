@@ -1,0 +1,246 @@
+%% export_for_python.m
+% Exports ALL time-series signals from every simulation run to a flat CSV.
+% Run this after run_validation_updated.m has completed.
+%
+% PREREQUISITE:  test_results must be in the workspace.
+%   >> run('run_validation_updated.m')   % runs 48 simulations
+%   >> run('export_for_python.m')        % this file — creates friction_data_full.csv
+%
+% OUTPUT:  friction_data_full.csv  (one row per timestep × wheel × run)
+%
+% ── COLUMNS ─────────────────────────────────────────────────────────────────
+%  Identity      test_no, case_no, wheel, mode, scenario, dist_name, road_1, road_2
+%  Time          time [s]
+%  Surface       surface  (string: 'Dry asphalt' | 'Wet asphalt' | 'Snow')
+%
+%  Measured (primary model inputs)
+%    slip        |s_measured|, positive  (0=free-roll, 1=lockup)
+%    mu_noisy    mu_measured (friction coefficient, sensor noise included)
+%    s_probe     ESC-perturbed slip setpoint sent to wheel controller
+%    g_esc       ESC gradient estimate from LPF demodulator
+%    a_esc       ESC dither amplitude (design parameter)
+%    s_hat       ESC reference slip (optimizer output)
+%    alpha       identifier confidence  (0=uncertain → 1=confident)
+%    dither      raw ESC perturbation signal
+%
+%  ABS flag
+%    abs_active  1 when alpha > 0.001 (ABS was controlling this wheel)
+%
+%  Ground truth  (computed from simulation setup — exact values)
+%    c1_true, c2_true, c3_true   Burckhardt params for the active surface
+%    mu_true       noiseless  mu(slip, c1, c2, c3)
+%    s_opt_true    optimal slip  = ln(c1*c2/c3)/c2
+%    mu_peak_true  peak friction = mu(s_opt_true)
+%
+%  Run-level metrics (same value repeated for every row of the same run)
+%    d_stop [m]   stopping distance
+%    t_stop [s]   stopping time
+%    T_front [Nm] front brake torque per wheel
+%    T_rear  [Nm] rear brake torque per wheel
+%
+% ── PYTHON USAGE ────────────────────────────────────────────────────────────
+%  Copy friction_data_full.csv → data/raw/real_friction_data.csv, then:
+%    python load_mat_data.py --inspect
+%    python load_mat_data.py                   % prepare filtered training CSV
+%    python predict_mu.py --data data/raw/prepared_friction.csv
+% ============================================================================
+
+%% ── Surface lookup table ────────────────────────────────────────────────────
+road_labels = {'Dry asphalt', 'Wet asphalt', 'Snow'};   % index 1, 2, 3
+
+% Burckhardt parameters:  rows = [c1; c2; c3]   cols = [dry, wet, snow]
+c_matrix = [1.2801,  0.857,   0.1946;
+            23.99,   33.822,  94.129;
+            0.52,    0.347,   0.0646];
+
+%% ── Wheel-suffixed signal names to extract ───────────────────────────────────
+wheel_signals = {'s_measured', 'mu_measured', 's_probe', 'g_esc', ...
+                 'a_esc', 's_hat', 'alpha', 'dither'};
+wheels = {'FL', 'RL'};
+
+alpha_thr = 1e-3;   % threshold for abs_active flag
+
+%% ── Main extraction loop ────────────────────────────────────────────────────
+n_tests = numel(test_results);
+fprintf('Exporting %d test runs × 2 wheels ...\n\n', n_tests);
+
+% Accumulate rows as a growing cell array of structs — safe for variable-length runs
+all_rows = cell(n_tests * 2, 1);
+n_chunks = 0;
+
+for i = 1:n_tests
+    tr = test_results(i);
+
+    % Skip failed runs
+    if ~strcmp(tr.status, 'OK')
+        fprintf('  test %2d: SKIP  (status = %s)\n', tr.test_no, tr.status);
+        continue
+    end
+
+    sig = tr.signals;
+
+    % Time vector — must exist
+    if ~isfield(sig, 'time') || isempty(sig.time)
+        fprintf('  test %2d: SKIP  (no time vector)\n', tr.test_no);
+        continue
+    end
+    t = sig.time(:);     % ensure column vector
+    n = numel(t);
+    if n < 5, continue; end
+
+    % Run metadata
+    road1  = tr.road_1;
+    road2  = tr.road_2;
+    t_mu   = tr.t_mu;
+    d_stop = tr.metrics.d_stop;
+    t_stop = tr.metrics.t_stop;
+
+    % Surface index per timestep  (n × 1 column vector)
+    road_idx = road1 * ones(n, 1);      % start with surface 1
+    if road1 ~= road2 && t_mu < t(end)
+        idx_ch = find(t >= t_mu, 1, 'first');
+        if ~isempty(idx_ch)
+            road_idx(idx_ch:end) = road2;
+        end
+    end
+
+    % Ground truth parameters — n×1 column vectors
+    % NOTE: c_matrix(row, col_vector) returns a ROW vector in MATLAB;
+    %       we must transpose to get a column vector.
+    c1_col = c_matrix(1, road_idx(:)')';   % n×1
+    c2_col = c_matrix(2, road_idx(:)')';   % n×1
+    c3_col = c_matrix(3, road_idx(:)')';   % n×1
+
+    for w = 1:numel(wheels)
+        wh = wheels{w};
+
+        % Extract each wheel signal, padding with NaN if missing
+        sdata = struct();
+        for k = 1:numel(wheel_signals)
+            fname = [wheel_signals{k}, '_', wh];
+            if isfield(sig, fname) && ~isempty(sig.(fname))
+                raw = sig.(fname)(:);           % force column vector
+                col = NaN(n, 1);
+                len = min(numel(raw), n);
+                col(1:len) = raw(1:len);
+            else
+                col = NaN(n, 1);
+            end
+            sdata.(wheel_signals{k}) = col;
+        end
+
+        % Derived columns — all n×1 column vectors
+        slip_abs   = abs(sdata.s_measured);                  % positive slip
+        alpha_col  = sdata.alpha;
+        abs_active = double(~isnan(alpha_col) & alpha_col > alpha_thr);
+
+        % Ground truth friction curve evaluated at measured slip
+        mu_true_col = c1_col .* (1 - exp(-c2_col .* slip_abs)) ...
+                      - c3_col .* slip_abs;
+
+        % Optimal slip  s_opt = ln(c1*c2/c3)/c2  — only where peak exists
+        ratio       = c1_col .* c2_col ./ c3_col;
+        s_opt_col   = NaN(n, 1);
+        has_peak    = (ratio > 1) & isfinite(ratio);
+        s_opt_col(has_peak) = log(ratio(has_peak)) ./ c2_col(has_peak);
+        s_opt_col   = min(max(s_opt_col, 0.001), 0.45);
+
+        % Peak friction
+        mu_peak_col = c1_col .* (1 - exp(-c2_col .* s_opt_col)) ...
+                      - c3_col .* s_opt_col;
+
+        % Surface label strings — n×1 cell array
+        surf_labels = road_labels(road_idx(:)')';   % transpose to n×1
+
+        % Build table chunk for this run × wheel
+        n_chunks = n_chunks + 1;
+        all_rows{n_chunks} = table( ...
+            repmat(tr.test_no,  n, 1),   repmat(tr.case_no,  n, 1), ...
+            repmat({wh},        n, 1),   repmat({tr.mode},   n, 1), ...
+            repmat({tr.scen_name},n,1),  repmat({tr.dist_name},n,1), ...
+            repmat(road1,       n, 1),   repmat(road2,       n, 1), ...
+            surf_labels,                 t, ...
+            slip_abs,                    sdata.mu_measured, ...
+            sdata.s_probe,               sdata.g_esc, ...
+            sdata.a_esc,                 sdata.s_hat, ...
+            alpha_col,                   sdata.dither, ...
+            abs_active, ...
+            c1_col,  c2_col,  c3_col, ...
+            mu_true_col,  s_opt_col,  mu_peak_col, ...
+            repmat(d_stop, n, 1),  repmat(t_stop, n, 1), ...
+            repmat(tr.T_front, n, 1),  repmat(tr.T_rear, n, 1), ...
+            'VariableNames', { ...
+                'test_no',    'case_no',    'wheel',         'mode', ...
+                'scenario',   'dist_name',  'road_1',        'road_2', ...
+                'surface',    'time',       'slip',          'mu_noisy', ...
+                's_probe',    'g_esc',      'a_esc',         's_hat', ...
+                'alpha',      'dither',     'abs_active', ...
+                'c1_true',    'c2_true',    'c3_true', ...
+                'mu_true',    's_opt_true', 'mu_peak_true', ...
+                'd_stop',     't_stop',     'T_front',       'T_rear'});
+
+        fprintf('  test %2d [%9s] %-14s road=%d->%d  n=%d rows\n', ...
+            tr.test_no, tr.mode, tr.scen_name, road1, road2, n);
+    end
+end
+
+%% ── Concatenate all chunks ────────────────────────────────────────────────
+fprintf('\nConcatenating %d table chunks ...\n', n_chunks);
+T = vertcat(all_rows{1:n_chunks});
+fprintf('Total rows: %d\n', height(T));
+
+%% ── Quality filter ───────────────────────────────────────────────────────
+valid_mask = T.slip     >= 0.005 & T.slip     <= 0.50  & ...
+             T.mu_noisy >= 0.0   & T.mu_noisy <= 2.0   & ...
+             isfinite(T.slip) & isfinite(T.mu_noisy);
+
+T_clean = T(valid_mask, :);
+fprintf('After quality filter: %d rows  (removed %d)\n\n', ...
+    height(T_clean), height(T) - height(T_clean));
+
+%% ── Summary ──────────────────────────────────────────────────────────────
+fprintf('%s\n', repmat('=', 1, 72));
+fprintf('  EXPORT SUMMARY\n');
+fprintf('%s\n', repmat('=', 1, 72));
+fprintf('  Rows    : %d\n', height(T_clean));
+fprintf('  Columns : %d\n\n', width(T_clean));
+
+fprintf('  By surface:\n');
+for s = 1:numel(road_labels)
+    mask = strcmp(T_clean.surface, road_labels{s});
+    if ~any(mask), continue; end
+    fprintf('    %-20s  n=%7d  slip=[%.3f, %.3f]  mu=[%.3f, %.3f]\n', ...
+        road_labels{s}, sum(mask), ...
+        min(T_clean.slip(mask)), max(T_clean.slip(mask)), ...
+        min(T_clean.mu_noisy(mask)), max(T_clean.mu_noisy(mask)));
+end
+
+fprintf('\n  By mode:\n');
+for m = {'Framework', 'NoABS'}
+    mask = strcmp(T_clean.mode, m{1});
+    fprintf('    %-12s  n=%7d\n', m{1}, sum(mask));
+end
+
+fprintf('\n  By scenario:\n');
+scens = unique(T_clean.scenario);
+for s = 1:numel(scens)
+    mask = strcmp(T_clean.scenario, scens{s});
+    fprintf('    %-16s  n=%7d\n', scens{s}, sum(mask));
+end
+
+n_abs = sum(T_clean.abs_active == 1);
+fprintf('\n  ABS-active rows : %d  (%.1f%%)\n', n_abs, 100*n_abs/height(T_clean));
+fprintf('%s\n\n', repmat('=', 1, 72));
+
+%% ── Save CSV ─────────────────────────────────────────────────────────────
+out_file = 'friction_data_full.csv';
+writetable(T_clean, out_file);
+fprintf('Saved: %s\n', out_file);
+fprintf('Size : %d rows × %d columns\n\n', height(T_clean), width(T_clean));
+
+fprintf('Copy to Python project:\n');
+fprintf('  friction_data_full.csv  ->  data/raw/real_friction_data.csv\n\n');
+fprintf('Then in Python:\n');
+fprintf('  python load_mat_data.py --inspect\n');
+fprintf('  python load_mat_data.py\n');
+fprintf('  python predict_mu.py --data data/raw/prepared_friction.csv\n');

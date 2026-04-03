@@ -1,0 +1,263 @@
+function [abs_active_new, dmu_opt_dt_smooth_new, ds_opt_dt_smooth_new, ...
+          dmu_opt_dt_raw, ds_opt_dt_raw, t_last_act_new, ...
+          conv_smooth_new, debug_logics, s_error_clean] = ...
+    abs_activation_v2(mu_abs, mu_opt_out, s_at_mu_max_k, mu_opt_estimated, ...
+                      s_abs, alpha, v_w, r_stat, ...
+                      dmu_opt_dt_smooth_prev, ds_opt_dt_smooth_prev, ...
+                      mu_opt_out_prev, s_at_mu_max_k_prev, ...
+                      abs_active_prev, t_last_act_prev, t_current, ...
+                      Ts, activation_params, ...
+                      s_error, s_error_prev, conv_smooth_prev, ...
+                      c1_est, c2_est, c3_est, ...
+                      a_esc, omega_esc, s_error_clean_prev, ...
+                      F_z, T_br,w_dot,F_z_nominal)
+
+% =========================================================================
+% abs_activation_v2.m — Confidence-Adaptive ABS Activation/Deactivation
+% =========================================================================
+%
+% ARCHITECTURE:
+%   Activation:
+%     Logic2 (proactive, model-based): algebraic alpha-adaptive threshold
+%       + slip position check (must be near or past peak in slip space)
+%     Logic3 (reactive, model-free):   past-peak detection
+%     Lockup emergency:                unconditional |s| > 0.40
+%
+%   Deactivation:
+%     Yol1 (utilization-based): mu_abs / mu_opt_estimated < threshold
+%     Yol2 (slip margin-based): |s| / s_opt_estimated < threshold
+%     Yol3 (torque-based):      T_br < T_peak * margin → can't reach peak
+%     All alpha-gated, timer-protected
+%
+% LOGIC2 — THREE CONDITIONS:
+%   1. alpha > alpha_gate         (model trustworthy)
+%   2. utilization > threshold    (mu near peak — algebraic threshold)
+%   3. slip_margin > 0.80         (slip near or past peak position)
+%
+%   Why slip_margin needed: on flat curves (snow), mu reaches 90% of peak
+%   at slip = 0.023 while s_opt = 0.06. Utilization alone triggers too
+%   early. Slip margin ensures we're actually near the peak in slip space,
+%   not just in mu space.
+%
+% YOL3 — TORQUE-BASED DEACTIVATION:
+%   T_peak = mu_opt_estimated * F_z * r_stat (torque needed to reach peak)
+%   If T_br < T_peak * 0.90 → driver torque insufficient to reach peak
+%   → slip cannot exceed peak → ABS unnecessary → deactivate
+%
+%   This breaks the self-sustaining loop:
+%     ABS active → STSMC holds slip at peak → utilization ≈ 1
+%     → Yol1/Yol2 never trigger → ABS stays on forever
+%   Yol3 asks the RIGHT question: "would we be in danger WITHOUT ABS?"
+%
+% ALGEBRAIC THRESHOLD:
+%   threshold = threshold_base * (1 - ln(alpha) / k_conf)
+%   Derived from alpha's own error definition.
+%
+% GİRİŞLER (28):
+%   mu_abs, mu_opt_out, s_at_mu_max_k, mu_opt_estimated,
+%   s_abs, alpha, v_w, r_stat,
+%   dmu_opt_dt_smooth_prev, ds_opt_dt_smooth_prev,
+%   mu_opt_out_prev, s_at_mu_max_k_prev,
+%   abs_active_prev, t_last_act_prev, t_current,
+%   Ts, activation_params (19x1),
+%   s_error, s_error_prev, conv_smooth_prev,
+%   c1_est, c2_est, c3_est,
+%   a_esc, omega_esc, s_error_clean_prev,
+%   F_z, T_br                                  ← NEW (2 inputs)
+%
+% ÇIKIŞLAR (9):
+%   abs_active_new, dmu_opt_dt_smooth_new, ds_opt_dt_smooth_new,
+%   dmu_opt_dt_raw, ds_opt_dt_raw, t_last_act_new,
+%   conv_smooth_new, debug_logics (8x1), s_error_clean
+%
+% PARAMETERS (activation_params, 19x1):
+%   (1)  k1_param          = 250     [UNUSED — Logic1 disabled]
+%   (2)  J_w               = 0.9     [UNUSED — Logic1 disabled]
+%   (3)  threshold_mu      = 0.90    [UNUSED — replaced by algebraic]
+%   (4)  hysteresis_ratio  = 0.60    deact Yol1 hysteresis
+%   (5)  tau_smooth        = 0.01    derivative LPF [s]
+%   (6)  dmu_noise_floor   = 0.5     Logic3 noise floor [1/s]
+%   (7)  safety_factor     = 0.3     [UNUSED — Logic1 disabled]
+%   (8)  T_min_active      = 0.06    minimum ABS on-time [s]
+%   (9)  t_start           = 0.3     activation delay [s]
+%   (10) v_w_min           = 2.0     min velocity [m/s]
+%   (11) alpha_deact_high  = 0.6     [UNUSED — deact quadrant-free]
+%   (12) alpha_deact_low   = 0.3     deact alpha gate
+%   (13) conv_threshold    = 0.5     STSMC divergence threshold [1/s]
+%   (14) s_error_min       = 0.02    min |s_error| for divergence
+%   (15) tau_conv          = 0.005   convergence LPF [s]
+%   (16) deact_slip_factor = 0.50    Yol2 slip margin threshold
+%   (17) alpha_gate        = 0.40    Logic2 alpha gate
+%   (18) threshold_base    = 0.85    Logic2 base threshold
+%   (19) k_conf_act        = 5.0     Logic2 confidence decay rate
+%
+% NEW SIMULINK WIRING:
+%   F_z  : per-wheel normal force [N] (from tire/suspension)
+%   T_br : per-wheel driver brake torque [Nm] (from brake model)
+% =========================================================================
+
+%% Çıkış boyutları (Simulink code gen)
+abs_active_new        = 0;
+dmu_opt_dt_smooth_new = 0;
+ds_opt_dt_smooth_new  = 0;
+dmu_opt_dt_raw        = 0;
+ds_opt_dt_raw         = 0;
+t_last_act_new        = 0;
+conv_smooth_new       = 0;
+debug_logics          = zeros(8, 1);
+s_error_clean         = 0;
+
+%% Parametreleri Aç
+hysteresis_ratio  = activation_params(4);
+tau_smooth        = activation_params(5);
+dmu_noise_floor   = activation_params(6);
+T_min_active      = activation_params(8);
+t_start           = activation_params(9);
+v_w_min           = activation_params(10);
+alpha_deact_low   = activation_params(12);
+conv_threshold    = activation_params(13);
+s_error_min       = activation_params(14);
+tau_conv          = activation_params(15);
+deact_slip_factor = activation_params(16);
+alpha_gate        = activation_params(17);
+threshold_base    = activation_params(18);
+k_conf            = activation_params(19);
+T_peak_treshold   = activation_params(20);
+decel_threshold   = activation_params(21);
+
+%% Varsayılan çıkışlar
+abs_active_new = abs_active_prev;
+t_last_act_new = t_last_act_prev;
+
+%% Convergence — perturbation removed from s_error
+perturbation_component = a_esc * sin(omega_esc * t_current);
+s_error_clean = s_error - perturbation_component;
+
+ds_error_clean_dt = (s_error_clean - s_error_clean_prev) / Ts;
+
+if abs(s_error_clean) < 1e-6
+    convergence = 0;
+else
+    convergence = -ds_error_clean_dt * sign(s_error_clean);
+end
+
+alpha_c         = tau_conv / (tau_conv + Ts);
+conv_smooth_new = alpha_c * conv_smooth_prev + (1 - alpha_c) * convergence;
+
+%% Erken çıkış
+if t_current < t_start || v_w < v_w_min
+    dmu_opt_dt_raw        = (mu_opt_out - mu_opt_out_prev) / Ts;
+    ds_opt_dt_raw         = (abs(s_at_mu_max_k) - abs(s_at_mu_max_k_prev)) / Ts;
+    alpha_s               = tau_smooth / (tau_smooth + Ts);
+    dmu_opt_dt_smooth_new = alpha_s * dmu_opt_dt_smooth_prev + (1 - alpha_s) * dmu_opt_dt_raw;
+    ds_opt_dt_smooth_new  = alpha_s * ds_opt_dt_smooth_prev  + (1 - alpha_s) * ds_opt_dt_raw;
+    return;
+end
+
+%% ADIM 1: Türevler (smoothed, |s|-mu space)
+alpha_s = tau_smooth / (tau_smooth + Ts);
+
+dmu_opt_dt_raw        = (mu_opt_out - mu_opt_out_prev) / Ts;
+dmu_opt_dt_smooth_new = alpha_s * dmu_opt_dt_smooth_prev + (1 - alpha_s) * dmu_opt_dt_raw;
+
+ds_opt_dt_raw         = (abs(s_at_mu_max_k) - abs(s_at_mu_max_k_prev)) / Ts;
+ds_opt_dt_smooth_new  = alpha_s * ds_opt_dt_smooth_prev  + (1 - alpha_s) * ds_opt_dt_raw;
+
+dmu = dmu_opt_dt_smooth_new;
+ds  = ds_opt_dt_smooth_new;
+
+%% ADIM 2: Konum Tespiti (4 bölge, Logic3 için)
+sol_taraf_ilerleme = (ds > 0) && (dmu > 0);    % Q1: approaching peak
+sag_taraf_iyi      = (ds < 0) && (dmu > 0);    % Q2: recovering (good)
+sol_taraf_geri     = (ds < 0) && (dmu < 0);    % Q3: retreating
+sag_taraf_kotu     = (ds > 0) && (dmu < 0);    % Q4: past peak (danger)
+
+if     sol_taraf_ilerleme, quad_id = 1;
+elseif sag_taraf_iyi,      quad_id = 2;
+elseif sol_taraf_geri,      quad_id = 3;
+elseif sag_taraf_kotu,      quad_id = 4;
+else,                       quad_id = 0;
+end
+
+%% ADIM 3: Model-based estimates (shared by activation + deactivation)
+% s_opt from identifier
+ratio_est = max(c1_est * c2_est / (c3_est + 1e-6), 1.01); % Parametre bagımlı oldugunu unutma !!!
+s_opt_estimated = log(ratio_est) / max(c2_est, 0.1); % Parametre bagımlı oldugunu unutma !!!
+s_opt_estimated = max(s_opt_estimated, 0.03); % Parametre bagımlı oldugunu unutma !!!
+
+% Slip margin: how close to peak in slip space
+slip_margin = abs(s_abs) / s_opt_estimated;
+
+% Friction utilization: how close to peak in mu space
+utilization = abs(mu_abs) / (mu_opt_estimated + 1e-6);
+
+% Peak torque: torque needed to reach friction peak on this wheel
+T_peak = mu_opt_estimated * abs(F_z) * abs(r_stat);
+
+%% ADIM 4: AKTİVASYON
+
+% Logic1: Classical fallback, alpha-gated (replaces old rate-based)
+% w_dot: wheel angular acceleration [rad/s²] — direct from wheel dynamics
+% NOT from buffer derivatives — clean signal, no ESC contamination
+Logic1 = (-w_dot * (1 - alpha) > decel_threshold);
+
+% Logic2: Algebraic alpha-adaptive threshold (proactive, model-based)
+%   Three conditions — all must be true:
+%   1. alpha > gate:              model trustworthy
+%   2. utilization > threshold:   mu near peak (alpha-compensated)
+%   3. slip_margin > 0.80:        slip near or past peak position
+alpha_safe = max(alpha, 1e-6);
+threshold_adaptive = threshold_base * (1 - log(alpha_safe) / k_conf);
+Logic2 = (alpha > alpha_gate) && ...
+         (utilization > threshold_adaptive) && ...
+         (slip_margin > 0.80);
+
+% Logic3: Past-peak safety net (reactive, model-free, alpha-independent)
+Logic3 = sag_taraf_kotu && (abs(dmu) > dmu_noise_floor);
+
+% Lockup emergency: unconditional
+lockup_emergency = (abs(s_abs) > 0.40); % Parametre Bagımlı
+
+activate = Logic1 || Logic2 || Logic3 || lockup_emergency;
+
+%% ADIM 5: DEAKTİVASYON — Üç bağımsız yol, quadrant-free
+
+% Yol 1 (utilization-based): peak'ten yeterince uzaktayız in mu space
+deact_util_threshold = threshold_base * hysteresis_ratio;
+deact_path1 = (utilization < deact_util_threshold) && (alpha > alpha_deact_low);
+
+% Yol 2 (slip margin-based): peak'in çok altındayız in slip space
+deact_path2 = (slip_margin < deact_slip_factor) && (alpha > alpha_deact_low);
+
+% Yol 3 (torque-based): driver torque insufficient to reach peak
+%   T_br < T_peak * 0.90 → even without ABS, slip can't reach peak
+%   → no lockup risk → ABS unnecessary
+%   This breaks the self-sustaining loop where ABS holds slip at peak
+%   → utilization ≈ 1 → Yol1/Yol2 never trigger
+%T_peak = mu_opt_estimated * F_z_nominal * abs(r_stat);
+deact_path3 = (abs(T_br) < T_peak * T_peak_treshold) && (alpha > alpha_deact_low);
+
+
+% Timer
+time_since_activation = t_current - t_last_act_prev;
+deact_timer = (time_since_activation > T_min_active);
+
+deactivate = (deact_path1 || deact_path2 || deact_path3) && deact_timer && abs_active_prev;
+
+%% ADIM 6: SR LATCH (one-directional)
+if ~abs_active_prev
+    if activate
+        abs_active_new = 1;
+        t_last_act_new = t_current;
+    end
+else
+    if deactivate
+        abs_active_new = 0;
+    end
+end
+
+%% Debug (8x1)
+debug_logics = [Logic1; Logic2; Logic3; deactivate; quad_id; ...
+                deact_path1; deact_path2; deact_path3];
+
+end
