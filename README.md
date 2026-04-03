@@ -1,5 +1,14 @@
 # Real-Time Tire-Road Friction Identification
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776ab.svg)](https://www.python.org/)
+[![NumPy](https://img.shields.io/badge/NumPy-1.24%2B-013243.svg)](https://numpy.org/)
+[![SciPy](https://img.shields.io/badge/SciPy-1.10%2B-8caae6.svg)](https://scipy.org/)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-f7931e.svg)](https://scikit-learn.org/)
+[![Matplotlib](https://img.shields.io/badge/Matplotlib-3.7%2B-11557c.svg)](https://matplotlib.org/)
+[![Pandas](https://img.shields.io/badge/Pandas-2.0%2B-150458.svg)](https://pandas.pydata.org/)
+[![MATLAB](https://img.shields.io/badge/MATLAB-Reference-e16737.svg)](https://www.mathworks.com/products/matlab.html)
+
 **NTT DATA BEST Hackathon 2026 · Politecnico di Torino · Team 24**
 
 A real-time tire-road friction identification system using an Extremum Seeking Control (ESC) gradient-based algorithm. The system continuously estimates Burckhardt friction model parameters from live wheel slip and friction measurements, enabling optimal slip tracking for maximum braking and traction force.
@@ -80,8 +89,8 @@ NTT_DATA_hackathon/
 ├── eval_robustness.py       # Monte Carlo robustness comparison across classifier variants
 ├── src/
 │   ├── burckhardt.py        # Burckhardt model math, surface presets, s_opt/μ_peak utils
-│   ├── data_gen.py          # Synthetic (slip, μ) dataset generation
-│   └── *.m.txt              # Original MATLAB source files (reference, do not edit)
+│   └── data_gen.py          # Synthetic (slip, μ) dataset generation
+│             =
 ├── data/
 │   ├── raw/                 # friction_data_full.csv (export from MATLAB)
 │   └── synthetic/           # Auto-generated Burckhardt curves
